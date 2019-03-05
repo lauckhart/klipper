@@ -91,6 +91,8 @@ class PrinterConfig:
         gcode = self.printer.lookup_object('gcode')
         gcode.register_command("SAVE_CONFIG", self.cmd_SAVE_CONFIG,
                                desc=self.cmd_SAVE_CONFIG_help)
+        gcode.register_command("GET_CONFIG", self.cmd_GET_CONFIG,
+                               desc=self.cmd_GET_CONFIG_help)
     def _read_config_file(self, filename):
         try:
             f = open(filename, 'rb')
@@ -254,6 +256,38 @@ class PrinterConfig:
         logging.info("save_config: set [%s] %s = %s", section, option, svalue)
     def remove_section(self, section):
         self.autosave.fileconfig.remove_section(section)
+    def _respond_named_config(self, config, gcode, section, option):
+        if config.has_section(section):
+            if option:
+                if config.has_option(section, option):
+                    gcode.respond(config.get(section, option))
+                else:
+                    gcode.respond_error("No option '%s' in config section '%s'"
+                                        % (option, section))
+            else:
+                response_config = ConfigParser.RawConfigParser()
+                response_config.add_section(section)
+                for option, value in config.items(section):
+                    response_config.set(section, option, value)
+                gcode.respond(self._build_raw_config_string(response_config))
+        else:
+            gcode.respond_error("No config section '%s'" % (section))
+    cmd_GET_CONFIG_help = "Inspect current configuration"
+    def cmd_GET_CONFIG(self, params):
+        gcode = self.printer.lookup_object('gcode')
+        config = self._config.fileconfig
+        if 'NAME' in params:
+            name = params['NAME']
+            dotpos = name.find('.')
+            if dotpos >= 0:
+                section = name[0:dotpos]
+                option = name[dotpos + 1:]
+            else:
+                section = name
+                option = None
+            self._respond_named_config(config, gcode, section, option)
+        else:
+            gcode.respond(self._build_raw_config_string(config))
     cmd_SAVE_CONFIG_help = "Overwrite config file and restart"
     def cmd_SAVE_CONFIG(self, params):
         if not self.autosave.fileconfig.sections():
