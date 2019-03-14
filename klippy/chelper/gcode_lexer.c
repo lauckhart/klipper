@@ -1,12 +1,20 @@
-// G-code lexer based on re2c
+// G-code lexer implementation
 //
 // Copyright (C) 2019 Greg Lauckhart <greg@lauckhart.com>
 //
 // This file may be distributed under the terms of the GNU GPLv3 license.
 
+#include "gcode_lexer.h"
 #include <stdlib.h>
 #include <math.h>
-#include "gcode_lexer.h"
+
+// These are defined in gcode_parser.keywords.c
+struct GCodeKeywordDetail {
+    char *name;
+    int id;
+};
+typedef struct GCodeKeywordDetail GCodeKeywordDetail;
+GCodeKeywordDetail* gcode_keyword_lookup(register const char *str, register size_t len);
 
 typedef enum state_t {
     PARSING_WHITESPACE,
@@ -39,7 +47,8 @@ typedef enum state_t {
 
 struct GCodeLexerSession {
     bool (*error)(void*, const char* format, ...);
-    bool (*token)(void*, const char* token);
+    bool (*keyword)(void*, gcode_keyword_t id);
+    bool (*identifier)(void*, const char* value);
     bool (*string_literal)(void*, const char* value);
     bool (*integer_literal)(void*, int64_t value);
     bool (*float_literal)(void*, double value);
@@ -59,7 +68,8 @@ struct GCodeLexerSession {
 GCodeLexerSession* gcode_lexer_start(
     void* context,
     bool (*error)(void*, const char* format, ...),
-    bool (*token)(void*, const char* token),
+    bool (*keyword)(void*, gcode_keyword_t id),
+    bool (*identifier)(void*, const char* value),
     bool (*string_literal)(void*, const char* value),
     bool (*integer_literal)(void*, int64_t value),
     bool (*float_literal)(void*, double value)
@@ -73,7 +83,8 @@ GCodeLexerSession* gcode_lexer_start(
     session->context = context;
 
     session->error = error;
-    session->token = token;
+    session->keyword = keyword;
+    session->identifier = identifier;
     session->string_literal = string_literal;
     session->integer_literal = integer_literal;
     session->float_literal = float_literal;
@@ -83,7 +94,7 @@ GCodeLexerSession* gcode_lexer_start(
     session->token_length = session->token_limit = 0;
 }
 
-bool gcode_token_alloc(GCodeLexerSession* session) {
+static bool gcode_token_alloc(GCodeLexerSession* session) {
     if (session->token_str == NULL) {
         session->token_str = malloc(128);
         if (!session->token_str) {
@@ -92,7 +103,7 @@ bool gcode_token_alloc(GCodeLexerSession* session) {
         }
     } else {
         session->token_length *= 2;
-        session->token_str = realloc(session->token, session->token_length);
+        session->token_str = realloc(session->token_str, session->token_length);
         if (!session->token_str) {
             session->error(session->context, "Out of memory");
             return false;
@@ -101,7 +112,7 @@ bool gcode_token_alloc(GCodeLexerSession* session) {
     return true;
 }
 
-inline bool token_char(GCodeLexerSession* session, const char ch) {
+static inline bool token_char(GCodeLexerSession* session, const char ch) {
     if (session->token_length == session->token_limit
         && !gcode_token_alloc(session))
     {
@@ -112,7 +123,7 @@ inline bool token_char(GCodeLexerSession* session, const char ch) {
     return true;
 }
 
-bool gcode_add_str_wchar(GCodeLexerSession* session) {
+static bool gcode_add_str_wchar(GCodeLexerSession* session) {
     char buf[MB_CUR_MAX];
     wctomb(buf, session->integer_value);
     for (char* p = buf; *p; p++)
@@ -123,14 +134,14 @@ bool gcode_add_str_wchar(GCodeLexerSession* session) {
     return true;
 }
 
-inline bool complete_token(GCodeLexerSession* session) {
+static inline bool complete_token(GCodeLexerSession* session) {
     if (!token_char(session, '\0')) {
         session->state = PARSING_COMPLETE;
         return false;
     }
 }
 
-inline char hex_digit_to_int(char ch) {
+static inline char hex_digit_to_int(char ch) {
     if (ch >= 0 && ch <= 9)
         return ch - '0';
     if (ch >= 'a' && ch <= 'f')
@@ -140,20 +151,20 @@ inline char hex_digit_to_int(char ch) {
     return -1;
 }
 
-inline void add_safe_digit(GCodeLexerSession* session, int8_t value,
+static inline void add_safe_digit(GCodeLexerSession* session, int8_t value,
                            int8_t base)
  {
     session->integer_value = session->integer_value * base + value;
     session->digit_count++;
 }
 
-inline void add_float_digit(GCodeLexerSession* session, float value,
+static inline void add_float_digit(GCodeLexerSession* session, float value,
                             int base)
 {
     session->float_value = session->float_value * base + value;
 }
 
-inline void add_float_fraction_digit(GCodeLexerSession* session, float value,
+static inline void add_float_fraction_digit(GCodeLexerSession* session, float value,
                                      int base)
 {
     session->float_value += value
@@ -161,7 +172,7 @@ inline void add_float_fraction_digit(GCodeLexerSession* session, float value,
     session->digit_count++;
 }
 
-inline bool is_ident_char(char ch) {
+static inline bool is_ident_char(char ch) {
     return (ch >= 'a' && ch <= 'z')
         || (ch >= 'A' && ch <= 'Z')
         || ch == '_'
@@ -175,22 +186,53 @@ inline bool is_ident_char(char ch) {
     } \
 }
 
+#define ERROR(args...) { \
+    session->error(session->context, args); \
+    session->state = PARSING_COMPLETE; \
+    return false; \
+}
+
 #define COMPLETE_TOKEN() { \
     if (!complete_token(session)) { \
         return false; \
     } \
 }
 
-#define EMIT_TOKEN() { \
+static inline bool emit_symbol(GCodeLexerSession* session) {
+    GCodeKeywordDetail* detail = gcode_keyword_lookup(session->token_str,
+                                                    session->token_length);
+    if (detail) {
+        EMIT(keyword, detail->id);
+        return true;
+    }
+
+    COMPLETE_TOKEN();
+    ERROR("Illegal operator '%s'", session->token_str);
+
+    return false;
+}
+
+#define EMIT_IDENTIFIER() { \
     COMPLETE_TOKEN(); \
-    EMIT(token, session->token_str); \
+    EMIT(identifier, session->token_str); \
     session->token_length = 0; \
 }
 
-#define ERROR(args...) { \
-    session->error(session->context, args); \
-    session->state = PARSING_COMPLETE; \
-    return false; \
+static inline bool emit_keyword_or_identifier(GCodeLexerSession* session) {
+    GCodeKeywordDetail* detail = gcode_keyword_lookup(session->token_str,
+                                                    session->token_length);
+    if (detail) {
+        EMIT(keyword, detail->id);
+    } else {
+        EMIT_IDENTIFIER();
+    }
+
+    return true;
+}
+
+#define EMIT_SYMBOL() { \
+    if (!emit_symbol(session)) \
+        return false; \
 }
 
 #define DIGIT_EXCEEDS(value, max, base) \
@@ -232,7 +274,8 @@ bool gcode_lexer_lex(GCodeLexerSession* session, const char* buffer,
             case PARSING_WHITESPACE:
                 switch (ch) {
                     case '(':
-                        EMIT(token, "(");
+                        TOKEN_CHAR('(');
+                        EMIT_SYMBOL();
                         session->state = PARSING_EXPRESSION;
                         break;
 
@@ -259,17 +302,17 @@ bool gcode_lexer_lex(GCodeLexerSession* session, const char* buffer,
             case PARSING_WORD:
                 switch (ch) {
                     CASE_WHITESPACE:
-                        EMIT_TOKEN();
+                        EMIT_IDENTIFIER();
                         session->state = PARSING_WHITESPACE;
                         break;
 
                     case ';':
-                        EMIT_TOKEN();
+                        EMIT_IDENTIFIER();
                         session->state = PARSING_COMMENT;
                         break;
 
                     case '(':
-                        EMIT_TOKEN();
+                        EMIT_IDENTIFIER();
                         session->state = PARSING_EXPRESSION;
                         break;
 
@@ -290,12 +333,14 @@ bool gcode_lexer_lex(GCodeLexerSession* session, const char* buffer,
                         break;
 
                     case '(':
-                        EMIT(token, "(");
+                        TOKEN_CHAR('(');
+                        EMIT_SYMBOL();
                         session->expr_nesting++;
                         break;
 
                     case ')':
-                        EMIT(token, ")");
+                        TOKEN_CHAR(')');
+                        EMIT_SYMBOL();
                         if (!session->expr_nesting)
                             session->state = PARSING_WHITESPACE;
                         else
@@ -326,7 +371,8 @@ bool gcode_lexer_lex(GCodeLexerSession* session, const char* buffer,
                     || ch == '\r'
                     || ch == '\n'
                 ) {
-                    EMIT_TOKEN();
+                    if (!emit_symbol(session))
+                        return false;
                     session->state = PARSING_EXPRESSION;
                     BACK_UP;
                 }
@@ -336,7 +382,8 @@ bool gcode_lexer_lex(GCodeLexerSession* session, const char* buffer,
                 if (is_ident_char(ch)) {
                     TOKEN_CHAR_UPPER(ch);
                 } else {
-                    EMIT_TOKEN();
+                    if (!emit_keyword_or_identifier(session))
+                        return false;
                     session->state = PARSING_EXPRESSION;
                     BACK_UP;
                 }

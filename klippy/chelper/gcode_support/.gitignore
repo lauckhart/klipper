@@ -1,0 +1,4 @@
+*.o
+*.gperf
+*.output
+gcode-cli
