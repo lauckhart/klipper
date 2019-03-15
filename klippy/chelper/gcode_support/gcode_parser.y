@@ -14,9 +14,7 @@
 #include <string.h>
 #include <math.h>
 
-static void yyerror(GCodeParser* parser, const char* msg) {
-    // TODO
-}
+static void yyerror(GCodeParser* parser, const char* msg);
 
 struct GCodeParser {
     void* context;
@@ -30,12 +28,33 @@ struct GCodeParser {
     bool (*eol)(void*);
 };
 
+static inline GCodeNode* newop2(
+    gcode_operator_type_t type,
+    GCodeNode* a,
+    GCodeNode* b)
+{
+    GCodeNode* op = gcode_operator_new(type, a);
+    gcode_add_next(a, b);
+    return op;
+}
+
+static inline GCodeNode* newop3(
+    gcode_operator_type_t type,
+    GCodeNode* a,
+    GCodeNode* b,
+    GCodeNode* c)
+{
+    GCodeNode* op = newop2(type, a, b);
+    gcode_add_next(b, c);
+    return op;
+}
+
 %}
 
 %define api.pure full
 %define api.push-pull push
 %define api.token.prefix {TOK_}
-%start sub_expr
+%start expr_only
 %param {GCodeParser* parser}
 
 %union {
@@ -46,6 +65,8 @@ struct GCodeParser {
     const char* str_value;
     GCodeNode* node;
 }
+
+%destructor { gcode_node_delete($$); } <node>
 
 %token <identifier> IDENTIFIER;
 %token <int_value> INTEGER;
@@ -88,14 +109,20 @@ struct GCodeParser {
 %left POWER
 %precedence NOT
 %precedence UNARY
+%left DOT
 
 %type <node> expr
+%type <node> exprs
+%type <node> expr_list
 
 %%
 
-// These non-terminals would be useful for parsing entire gcode.  However,
-// current dialect only requires us to invoke the Bison parser for expressions.
-// We avoid this expense by handling directly in gcode_parser_parse.
+// These non-terminals would be useful for parsing entire gcode.  This would be
+// required e.g. for functions, if/else, loops, etc.
+//
+// However, current dialect only requires us to invoke the Bison parser for
+// expressions.  We avoid expense of Bison by handling directly in lexer
+// callbacks until we encounter an expression.
 /*
 gcode:
   %empty
@@ -115,53 +142,50 @@ field:
 | IDENTIFIER;
 */
 
-sub_expr:
-  "(" expr ")" { parser->expr(parser->context, $expr);
-                 parser->in_expr = false; }
+expr_only:
+    expr { parser->expr(parser->context, $expr);
+           parser->in_expr = false; }
 ;
 
 expr:
-  sub_expr
-| parameter
-| STRING { $$ = gcode_str_new($1); }
-| INTEGER { $$ = gcode_int_new($1); }
-| FLOAT { $$ = gcode_float_new($1); }
-| INFINITY { $$ = gcode_float_new(INFINITY); }
-| NAN { $$ = gcode_float_new(NAN); }
-| "!" expr
-| "+" expr %prec UNARY
-| "-" expr %prec UNARY
-| expr "+" expr
-| expr "-" expr
-| expr "*" expr
-| expr "/" expr
-| expr MODULUS expr
-| expr POWER expr
-| expr AND expr
-| expr OR expr
-| expr ">" expr
-| expr "<" expr
-| expr ">=" expr
-| expr "<=" expr
-| expr "~" expr
-| expr IF expr ELSE expr
-| expr "=" expr
-| IDENTIFIER "(" exprs ")"
-;
-
-parameter:
-  IDENTIFIER
-| IDENTIFIER "." parameter
+  "(" expr[e] ")"           { $$ = $e; }
+| STRING                    { $$ = gcode_str_new($1); }
+| INTEGER                   { $$ = gcode_int_new($1); }
+| FLOAT                     { $$ = gcode_float_new($1); }
+| INFINITY                  { $$ = gcode_float_new(INFINITY); }
+| NAN                       { $$ = gcode_float_new(NAN); }
+| "!" expr[a]               { $$ = gcode_operator_new(GCODE_NOT, $a); }
+| "-" expr[a] %prec UNARY   { $$ = gcode_operator_new(GCODE_NEGATE, $a); }
+| "+" expr[a] %prec UNARY   { $$ = $a; }
+| expr[a] "+" expr[b]       { $$ = newop2(GCODE_ADD, $a, $b); }
+| expr[a] "-" expr[b]       { $$ = newop2(GCODE_SUBTRACT, $a, $b); }
+| expr[a] "*" expr[b]       { $$ = newop2(GCODE_MULTIPLY, $a, $b); }
+| expr[a] "/" expr[b]       { $$ = newop2(GCODE_DIVIDE, $a, $b); }
+| expr[a] MODULUS expr[b]   { $$ = newop2(GCODE_MODULUS, $a, $b); }
+| expr[a] POWER expr[b]     { $$ = newop2(GCODE_POWER, $a, $b); }
+| expr[a] AND expr[b]       { $$ = newop2(GCODE_AND, $a, $b); }
+| expr[a] OR expr[b]        { $$ = newop2(GCODE_OR, $a, $b); }
+| expr[a] "<" expr[b]       { $$ = newop2(GCODE_LT, $a, $b); }
+| expr[a] ">" expr[b]       { $$ = newop2(GCODE_GT, $a, $b); }
+| expr[a] ">=" expr[b]      { $$ = newop2(GCODE_GTE, $a, $b); }
+| expr[a] "<=" expr[b]      { $$ = newop2(GCODE_LTE, $a, $b); }
+| expr[a] "~" expr[b]       { $$ = newop2(GCODE_CONCAT, $a, $b); }
+| expr[a] "=" expr[b]       { $$ = newop2(GCODE_EQUALS, $a, $b); }
+| expr[a] "." expr[b]       { $$ = newop2(GCODE_LOOKUP, $a, $b); }
+| expr[a] IF expr[b] ELSE expr[c]
+                            { $$ = newop3(GCODE_IFELSE, $a, $b, $c); }
+| IDENTIFIER[name] "(" exprs[args] ")"
+                            { $$ = gcode_function_new($name, $args); }
 ;
 
 exprs:
-  %empty
+  %empty { $$ = NULL; }
 | expr_list
 ;
 
 expr_list:
   expr
-| expr "," expr_list
+| expr[a] "," expr_list[b]  { $$ = $a; gcode_add_next($a, $b); }
 ;
 
 %%
@@ -190,6 +214,10 @@ static bool error(void* context, const char* format, ...) {
 #define ASSERT_EXPR { \
     if (!parser->in_expr) \
         ERROR("Internal: Unexpected token type"); \
+}
+
+static void yyerror(GCodeParser* parser, const char* msg) {
+    error(parser, "G-Code parse error: %s", msg);
 }
 
 static bool lex_keyword(void* context, gcode_keyword_t id) {

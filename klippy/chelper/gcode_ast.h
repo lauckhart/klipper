@@ -11,29 +11,32 @@
 
 typedef enum gcode_node_type_t {
     GCODE_UNKNOWN_NODE,
-    GCODE_IDENTIFIER,
+    GCODE_PARAMETER,
     GCODE_STR,
     GCODE_INT,
     GCODE_FLOAT,
     GCODE_OPERATOR,
-    GCODE_CALL
+    GCODE_FUNCTION
 } gcode_node_type_t;
 
 typedef enum gcode_operator_type_t {
     GCODE_UNKNOWN_OPERATOR,
     GCODE_AND,
-    GCODE_EQUAL,
+    GCODE_OR,
+    GCODE_EQUALS,
     GCODE_CONCAT,
-    GCODE_PLUS,
-    GCODE_MINUS,
-    GCODE_MOD,
-    GCODE_TIMES,
+    GCODE_ADD,
+    GCODE_SUBTRACT,
+    GCODE_MODULUS,
+    GCODE_POWER,
+    GCODE_MULTIPLY,
     GCODE_DIVIDE,
     GCODE_LT,
     GCODE_GT,
     GCODE_LTE,
     GCODE_GTE,
     GCODE_NOT,
+    GCODE_NEGATE,
     GCODE_IFELSE,
     GCODE_LOOKUP
 } gcode_operator_type_t;
@@ -43,11 +46,11 @@ typedef struct GCodeNode {
     struct GCodeNode* next;
 } GCodeNode;
 
-typedef struct GCodeIdentifierNode {
+typedef struct GCodeParameterNode {
     gcode_node_type_t type;
     GCodeNode* next;
     char* name;
-} GCodeIdentifierNode;
+} GCodeParameterNode;
 
 typedef struct GCodeStrNode {
     gcode_node_type_t type;
@@ -67,26 +70,34 @@ typedef struct GCodeFloatNode {
     double value;
 } GCodeFloatNode;
 
+typedef struct GCodeParentNode {
+    gcode_node_type_t type;
+    GCodeNode* next;
+    GCodeNode* children;
+} GCodeParentNode;
+
 typedef struct GCodeOperatorNode {
     gcode_node_type_t type;
     GCodeNode* next;
-    gcode_operator_type_t operator;
     GCodeNode* children;
+    gcode_operator_type_t operator;
 } GCodeOperatorNode;
 
-typedef struct GCodeCallNode {
+typedef struct GCodeFunctionNode {
     gcode_node_type_t type;
     GCodeNode* next;
-    char* name;
     GCodeNode* children;
+    char* name;
 } GCodeCallNode;
 
-GCodeNode* gcode_identifier_new(const char* text);
+GCodeNode* gcode_parameter_new(const char* text);
 GCodeNode* gcode_str_new(const char* text);
 GCodeNode* gcode_int_new(int64_t value);
 GCodeNode* gcode_float_new(double value);
 GCodeNode* gcode_operator_new(gcode_operator_type_t type, GCodeNode* children);
-GCodeNode* gcode_call_new(const char* name, GCodeNode* children);
+GCodeNode* gcode_function_new(const char* name, GCodeNode* children);
+void gcode_add_next(GCodeNode* sibling, GCodeNode* next);
+void gcode_add_child(GCodeNode* parent, GCodeNode* child);
 void gcode_node_delete(GCodeNode* node);
 
 #endif

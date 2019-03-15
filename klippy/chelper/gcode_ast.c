@@ -8,8 +8,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-GCodeNode* gcode_identifier_new(const char* name) {
-    GCodeIdentifierNode* n = malloc(sizeof(GCodeIdentifierNode));
+GCodeNode* gcode_parameter_new(const char* name) {
+    GCodeParameterNode* n = malloc(sizeof(GCodeParameterNode));
     if (!n)
         return NULL;
     n->name = strdup(name);
@@ -63,7 +63,7 @@ GCodeNode* gcode_operator_new(gcode_operator_type_t type,
     return (GCodeNode*)n;
 }
 
-GCodeNode* gcode_call_new(const char* name, GCodeNode* children) {
+GCodeNode* gcode_function_new(const char* name, GCodeNode* children) {
     GCodeCallNode* n = malloc(sizeof(GCodeCallNode));
     if (!n)
         return NULL;
@@ -72,17 +72,40 @@ GCodeNode* gcode_call_new(const char* name, GCodeNode* children) {
         free(n);
         return NULL;
     }
-    n->type = GCODE_CALL;
+    n->type = GCODE_FUNCTION;
     n->children = children;
     return (GCodeNode*)n;
+}
+
+void gcode_add_next(GCodeNode* sibling, GCodeNode* child) {
+    if (!sibling || !child)
+        return;
+    while (sibling->next)
+        sibling = sibling->next;
+    sibling->next = child;
+}
+
+void gcode_add_child(GCodeNode* parent, GCodeNode* child) {
+    if (!parent || !child
+        || (parent->type != GCODE_OPERATOR && parent->type != GCODE_FUNCTION))
+        return;
+    GCodeParentNode* p = (GCodeParentNode*)parent;
+    if (!p->children) {
+        p->children = child;
+        return;
+    }
+    GCodeNode* n = p->children;
+    while (n->next)
+        n = n->next;
+    n->next = child;
 }
 
 void gcode_node_delete(GCodeNode* node) {
     if (!node)
         return;
     switch (node->type) {
-        case GCODE_IDENTIFIER:
-            free(((GCodeIdentifierNode*)node)->name);
+        case GCODE_PARAMETER:
+            free(((GCodeParameterNode*)node)->name);
             break;
 
         case GCODE_STR:
@@ -93,7 +116,7 @@ void gcode_node_delete(GCodeNode* node) {
             gcode_node_delete(((GCodeOperatorNode*)node)->children);
             break;
 
-        case GCODE_CALL:
+        case GCODE_FUNCTION:
             free(((GCodeCallNode*)node)->name);
             gcode_node_delete(((GCodeCallNode*)node)->children);
             break;

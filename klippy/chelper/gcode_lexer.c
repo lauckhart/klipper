@@ -14,7 +14,8 @@ struct GCodeKeywordDetail {
     int id;
 };
 typedef struct GCodeKeywordDetail GCodeKeywordDetail;
-GCodeKeywordDetail* gcode_keyword_lookup(register const char *str, register size_t len);
+GCodeKeywordDetail* gcode_keyword_lookup(register const char *str,
+                                         register size_t len);
 
 typedef enum state_t {
     PARSING_WHITESPACE,
@@ -266,6 +267,9 @@ static inline bool emit_keyword_or_identifier(GCodeLexer* lexer) {
 
 static const int UNICODE_MAX = 0x10ffff;
 
+// Get ready for monster switch statement.  Two reasons for this:
+//   - Performance (no function call overhead)
+//   - Incremental scanning (buffer may terminate anywhere in a statement)
 bool gcode_lexer_scan(GCodeLexer* lexer, const char* buffer,
                       size_t length)
 {
