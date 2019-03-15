@@ -21,11 +21,11 @@ struct GCodeParser {
     GCodeLexer* lexer;
     bool in_expr;
     struct yypstate* yyps;
+    GCodeNode* statements;
+    GCodeNode* last_statement;
 
     bool (*error)(void*, const char*);
-    bool (*word)(void*, const char*);
-    bool (*expr)(void*, const GCodeNode*);
-    bool (*eol)(void*);
+    bool (*statements_fn)(void*, GCodeStatementNode*);
 };
 
 static inline GCodeNode* newop2(
@@ -49,12 +49,23 @@ static inline GCodeNode* newop3(
     return op;
 }
 
+static inline void add_statement(GCodeParser* parser, GCodeNode* children) {
+    GCodeNode* statement = gcode_statement_new(children);
+    if (parser->statements)
+        parser->statements = parser->last_statement = statement;
+    else {
+        gcode_add_next(parser->last_statement,
+                       statement);
+        parser->last_statement = statement;
+    }
+}
+
 %}
 
 %define api.pure full
 %define api.push-pull push
 %define api.token.prefix {TOK_}
-%start expr_only
+%start statements
 %param {GCodeParser* parser}
 
 %union {
@@ -97,6 +108,12 @@ static inline GCodeNode* newop3(
 %token <keyword> RPAREN ")"
 %token <keyword> NAN "NAN"
 %token <keyword> INFINITY "INFINITY"
+%token <keyword> TRUE "TRUE"
+%token <keyword> FALSE "FALSE"
+
+// This special keyword is an indicator from the lexer that two expressions
+// should be concatenated.  Results from G-Code such as X(x)
+%token <keyword> BRIDGE "\xff"
 
 %left OR
 %left AND
@@ -111,40 +128,28 @@ static inline GCodeNode* newop3(
 %precedence UNARY
 %left DOT
 
+%type <node> statement
+%type <node> field
 %type <node> expr
 %type <node> exprs
 %type <node> expr_list
 
 %%
 
-// These non-terminals would be useful for parsing entire gcode.  This would be
-// required e.g. for functions, if/else, loops, etc.
-//
-// However, current dialect only requires us to invoke the Bison parser for
-// expressions.  We avoid expense of Bison by handling directly in lexer
-// callbacks until we encounter an expression.
-/*
-gcode:
+statements:
   %empty
-| line gcode
+| statement[s] statements   { if ($s) add_statement(parser, $s); }
 ;
 
-line:
-  fields "\n"
+statement:
+  "\n"                      { $$ = NULL; }
+| field statement[next]     { $$ = gcode_add_next($field, $next); }
 ;
-
-fields:
-  %empty
-| field fields;
 
 field:
-  sub_expr
-| IDENTIFIER;
-*/
-
-expr_only:
-    expr { parser->expr(parser->context, $expr);
-           parser->in_expr = false; }
+  STRING                    { $$ = gcode_str_new($1); }
+| "(" expr ")"              { $$ = $expr; }
+| field[a] BRIDGE field[b]  { $$ = newop2(GCODE_CONCAT, $a, $b); }
 ;
 
 expr:
@@ -152,6 +157,8 @@ expr:
 | STRING                    { $$ = gcode_str_new($1); }
 | INTEGER                   { $$ = gcode_int_new($1); }
 | FLOAT                     { $$ = gcode_float_new($1); }
+| TRUE                      { $$ = gcode_bool_new(true); }
+| FALSE                     { $$ = gcode_bool_new(false); }
 | INFINITY                  { $$ = gcode_float_new(INFINITY); }
 | NAN                       { $$ = gcode_float_new(NAN); }
 | "!" expr[a]               { $$ = gcode_operator_new(GCODE_NOT, $a); }
@@ -222,18 +229,6 @@ static void yyerror(GCodeParser* parser, const char* msg) {
 
 static bool lex_keyword(void* context, gcode_keyword_t id) {
     GCodeParser* parser = context;
-
-    switch (id) {
-        case TOK_LPAREN:
-            parser->in_expr = true;
-            break;
-
-        case TOK_EOL:
-            if (!parser->in_expr)
-                return parser->eol(parser->context);
-            break;
-    }
-
     ASSERT_EXPR;
 
     yypush_parse(parser->yyps, id, NULL, parser);
@@ -244,9 +239,6 @@ static bool lex_keyword(void* context, gcode_keyword_t id) {
 static bool lex_identifier(void* context, const char* name) {
     GCodeParser* parser = context;
 
-    if (!parser->in_expr)
-        return parser->word(parser->context, name);
-
     YYSTYPE yys = { .identifier = name };
     yypush_parse(parser->yyps, TOK_IDENTIFIER, &yys, parser);
 
@@ -255,7 +247,6 @@ static bool lex_identifier(void* context, const char* name) {
 
 static bool lex_string_literal(void* context, const char* value) {
     GCodeParser* parser = context;
-    ASSERT_EXPR;
 
     YYSTYPE yys = { .str_value = value };
     yypush_parse(parser->yyps, TOK_STRING, &yys, parser);
@@ -285,10 +276,8 @@ static bool lex_float_literal(void* context, double value) {
 
 GCodeParser* gcode_parser_new(
     void* context,
-    bool (*error_fn)(void* context, const char* text),
-    bool (*word)(void* context, const char* text),
-    bool (*expr)(void* context, const GCodeNode* node),
-    bool (*eol)(void* context))
+    bool (*error_fn)(void*, const char*),
+    bool (*statements_fn)(void*, GCodeStatementNode*))
 {
     GCodeParser* parser = malloc(sizeof(GCodeParser));
     if (!parser) {
@@ -301,9 +290,7 @@ GCodeParser* gcode_parser_new(
     parser->in_expr = false;
 
     parser->error = error_fn;
-    parser->word = word;
-    parser->expr = expr;
-    parser->eol = eol;
+    parser->statements_fn = statements_fn;
 
     parser->lexer = gcode_lexer_new(
         parser,
@@ -325,7 +312,14 @@ GCodeParser* gcode_parser_new(
 bool gcode_parser_parse(GCodeParser* parser, const char* buffer,
                         size_t length)
 {
-    return gcode_lexer_scan(parser->lexer, buffer, length);
+    parser->statements = NULL;
+    if (!gcode_lexer_scan(parser->lexer, buffer, length)) {
+        gcode_node_delete(parser->statements);
+        return false;
+    }
+    if (parser->statements)
+        parser->statements_fn(parser->context,
+                              (GCodeStatementNode*)parser->statements);
 }
 
 void gcode_parser_finish(GCodeParser* parser) {

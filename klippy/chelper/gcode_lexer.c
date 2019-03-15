@@ -18,11 +18,14 @@ GCodeKeywordDetail* gcode_keyword_lookup(register const char *str,
                                          register size_t len);
 
 typedef enum state_t {
+    PARSING_NEWLINE,
     PARSING_WHITESPACE,
     PARSING_COMPLETE,
+    PARSING_LINENO,
     PARSING_WORD,
     PARSING_COMMENT,
     PARSING_EXPRESSION,
+    PARSING_AFTER_EXPR,
     PARSING_SYMBOL,
     PARSING_IDENTIFIER,
     PARSING_STRING,
@@ -215,9 +218,26 @@ static inline bool emit_symbol(GCodeLexer* lexer) {
     return false;
 }
 
+static inline bool emit_char_symbol(GCodeLexer* lexer, char ch) {
+    GCodeKeywordDetail* detail = gcode_keyword_lookup(&ch, 1);
+
+    if (!detail)
+        ERROR("Internal: Attempt to emit unknown symbol '%c'", ch);
+
+    EMIT(keyword, detail->id);
+
+    return true;
+}
+
 #define EMIT_IDENTIFIER() { \
     COMPLETE_TOKEN(); \
     EMIT(identifier, lexer->token_str); \
+    lexer->token_length = 0; \
+}
+
+#define EMIT_STRING { \
+    COMPLETE_TOKEN(); \
+    EMIT(string_literal, lexer->token_str); \
     lexer->token_length = 0; \
 }
 
@@ -226,6 +246,7 @@ static inline bool emit_keyword_or_identifier(GCodeLexer* lexer) {
                                                     lexer->token_length);
     if (detail) {
         EMIT(keyword, detail->id);
+        lexer->token_length = 0;
     } else {
         EMIT_IDENTIFIER();
     }
@@ -235,6 +256,16 @@ static inline bool emit_keyword_or_identifier(GCodeLexer* lexer) {
 
 #define EMIT_SYMBOL() { \
     if (!emit_symbol(lexer)) \
+        return false; \
+}
+
+#define EMIT_CHAR_SYMBOL() { \
+    if (!emit_char_symbol(lexer, ch)) \
+        return false; \
+}
+
+#define EMIT_BRIDGE { \
+    if (!emit_char_symbol(lexer, '\xff')) \
         return false; \
 }
 
@@ -277,17 +308,29 @@ bool gcode_lexer_scan(GCodeLexer* lexer, const char* buffer,
     int8_t digit_value;
     for (char ch = *buffer; buffer < end; buffer++)
         switch (lexer->state) {
+            case PARSING_NEWLINE:
+                switch (ch) {
+                    case 'N':
+                        lexer->state = PARSING_LINENO;
+                        break;
+
+                    default:
+                        BACK_UP;
+                        lexer->state = PARSING_WHITESPACE;
+                        break;
+                }
+                break;
+
             case PARSING_WHITESPACE:
                 switch (ch) {
                     case '(':
-                        TOKEN_CHAR('(');
-                        EMIT_SYMBOL();
+                        EMIT_CHAR_SYMBOL();
                         lexer->state = PARSING_EXPRESSION;
                         break;
 
                     case '\n':
-                        TOKEN_CHAR('\n');
-                        EMIT_SYMBOL();
+                        EMIT_CHAR_SYMBOL();
+                        lexer->state = PARSING_NEWLINE;
                         break;
 
                     case ';':
@@ -310,26 +353,50 @@ bool gcode_lexer_scan(GCodeLexer* lexer, const char* buffer,
             case PARSING_COMPLETE:
                 return false;
 
-            case PARSING_WORD:
+            case PARSING_LINENO:
                 switch (ch) {
                     case '\n':
-                        EMIT_IDENTIFIER();
-                        if (ch == '\n')
-                            ERROR("Unterminated expression");
+                        EMIT_CHAR_SYMBOL();
+                        lexer->state = PARSING_NEWLINE;
                         break;
 
                     CASE_SPACE:
-                        EMIT_IDENTIFIER();
                         lexer->state = PARSING_WHITESPACE;
                         break;
 
                     case ';':
-                        EMIT_IDENTIFIER();
                         lexer->state = PARSING_COMMENT;
                         break;
 
                     case '(':
-                        EMIT_IDENTIFIER();
+                        EMIT_CHAR_SYMBOL();
+                        lexer->state = PARSING_EXPRESSION;
+                        break;
+                }
+                break;
+
+            case PARSING_WORD:
+                switch (ch) {
+                    case '\n':
+                        EMIT_STRING;
+                        EMIT_CHAR_SYMBOL();
+                        lexer->state = PARSING_NEWLINE;
+                        break;
+
+                    CASE_SPACE:
+                        EMIT_STRING;
+                        lexer->state = PARSING_WHITESPACE;
+                        break;
+
+                    case ';':
+                        EMIT_STRING;
+                        lexer->state = PARSING_COMMENT;
+                        break;
+
+                    case '(':
+                        EMIT_STRING;
+                        EMIT_BRIDGE;
+                        EMIT_CHAR_SYMBOL();
                         lexer->state = PARSING_EXPRESSION;
                         break;
 
@@ -341,9 +408,8 @@ bool gcode_lexer_scan(GCodeLexer* lexer, const char* buffer,
 
             case PARSING_COMMENT:
                 if (ch == '\n') {
-                    TOKEN_CHAR('\n');
-                    EMIT_SYMBOL();
-                    lexer->state = PARSING_WHITESPACE;
+                    EMIT_CHAR_SYMBOL();
+                    lexer->state = PARSING_NEWLINE;
                 }
                 break;
 
@@ -357,16 +423,14 @@ bool gcode_lexer_scan(GCodeLexer* lexer, const char* buffer,
                         break;
 
                     case '(':
-                        TOKEN_CHAR('(');
-                        EMIT_SYMBOL();
+                        EMIT_CHAR_SYMBOL();
                         lexer->expr_nesting++;
                         break;
 
                     case ')':
-                        TOKEN_CHAR(')');
-                        EMIT_SYMBOL();
+                        EMIT_CHAR_SYMBOL();
                         if (!lexer->expr_nesting)
-                            lexer->state = PARSING_WHITESPACE;
+                            lexer->state = PARSING_AFTER_EXPR;
                         else
                             lexer->expr_nesting--;
                         break;
@@ -385,6 +449,21 @@ bool gcode_lexer_scan(GCodeLexer* lexer, const char* buffer,
                         BACK_UP;
                         break;
                 }
+                break;
+
+            case PARSING_AFTER_EXPR:
+                switch (ch) {
+                    case '\0':
+                    case '\n':
+                    case ';':
+                    CASE_SPACE:
+                        break;
+
+                    default:
+                        EMIT_BRIDGE;
+                        break;
+                }
+                BACK_UP;
                 break;
 
             case PARSING_SYMBOL:
@@ -422,8 +501,7 @@ bool gcode_lexer_scan(GCodeLexer* lexer, const char* buffer,
                         break;
 
                     case '"':
-                        COMPLETE_TOKEN();
-                        EMIT(string_literal, lexer->token_str);
+                        EMIT_STRING;
                         lexer->state = PARSING_EXPRESSION;
                         break;
 
@@ -820,6 +898,7 @@ void gcode_lexer_finish(GCodeLexer* lexer) {
         case PARSING_COMPLETE:
         case PARSING_WHITESPACE:
         case PARSING_COMMENT:
+        case PARSING_NEWLINE:
             break;
 
         case PARSING_STRING:
@@ -839,7 +918,8 @@ void gcode_lexer_finish(GCodeLexer* lexer) {
 }
 
 void gcode_lexer_reset(GCodeLexer* lexer) {
-    lexer->state = PARSING_WHITESPACE;
+    lexer->state = PARSING_NEWLINE;
+    lexer->token_length = 0;
 }
 
 void gcode_lexer_delete(GCodeLexer* lexer) {

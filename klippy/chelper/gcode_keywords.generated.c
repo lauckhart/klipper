@@ -36,7 +36,7 @@
 #line 7 "gcode_parser.keywords.gperf"
 struct GCodeKeywordDetail { const char* name; int id; };
 
-#define TOTAL_KEYWORDS 24
+#define TOTAL_KEYWORDS 27
 #define MIN_WORD_LENGTH 1
 #define MAX_WORD_LENGTH 8
 #define MIN_HASH_VALUE 1
@@ -56,20 +56,18 @@ hash (register const char *str, register size_t len)
   static unsigned char asso_values[] =
     {
       33, 33, 33, 33, 33, 33, 33, 33, 33, 33,
-       4, 33, 33, 33, 33, 33, 33, 33, 33, 33,
+      19, 33, 33, 33, 33, 33, 33, 33, 33, 33,
       33, 33, 33, 33, 33, 33, 33, 33, 33, 33,
-      33, 33, 33, 31, 33, 33, 33, 26, 33, 33,
-      28, 23, 15, 18, 13,  8, 30, 25, 33, 33,
+      33, 33, 33, 14, 33, 33, 33,  9, 33, 33,
+      31, 26, 15, 28, 23, 18, 13, 30, 33, 33,
       33, 33, 33, 33, 33, 33, 33, 33, 33, 33,
-      10, 20,  5, 33, 33, 10, 33, 33, 33,  0,
-      33, 33, 33,  0, 33, 33, 33, 33,  0, 20,
-      33, 33, 33, 33, 33, 33, 33, 33, 33, 33,
-      33, 33, 33, 33, 33, 33, 33, 33, 33, 33,
-      33, 33, 33, 33, 33, 33, 33, 33, 33, 33,
-      33, 33, 33, 33, 33, 33, 33, 33, 33, 33,
-      33, 33, 33, 33, 33, 33,  0, 33, 33, 33,
+      10, 25,  5, 33, 33, 10, 33, 33, 33,  5,
+       0, 33, 33,  0, 33, 33, 33, 33,  0, 20,
+      33, 33, 33, 33,  0, 33, 33, 33, 33, 33,
       33, 33, 33, 33, 33, 33, 33, 33, 33, 33,
       33, 33, 33, 33, 33, 33, 33, 33, 33, 33,
+      33, 33, 33, 33, 33, 33, 33, 33, 33, 33,
+      33, 33, 33, 33, 33, 33, 20, 33, 33, 33,
       33, 33, 33, 33, 33, 33, 33, 33, 33, 33,
       33, 33, 33, 33, 33, 33, 33, 33, 33, 33,
       33, 33, 33, 33, 33, 33, 33, 33, 33, 33,
@@ -80,7 +78,9 @@ hash (register const char *str, register size_t len)
       33, 33, 33, 33, 33, 33, 33, 33, 33, 33,
       33, 33, 33, 33, 33, 33, 33, 33, 33, 33,
       33, 33, 33, 33, 33, 33, 33, 33, 33, 33,
-      33, 33, 33, 33, 33, 33
+      33, 33, 33, 33, 33, 33, 33, 33, 33, 33,
+      33, 33, 33, 33, 33, 33, 33, 33, 33, 33,
+      33, 33, 33, 33, 33,  0
     };
   return len + asso_values[(unsigned char)str[0]];
 }
@@ -91,62 +91,65 @@ gcode_keyword_lookup (register const char *str, register size_t len)
   static struct GCodeKeywordDetail wordlist[] =
     {
       {""},
-#line 22 "gcode_parser.keywords.gperf"
-      {"~",266},
-#line 21 "gcode_parser.keywords.gperf"
+#line 19 "gcode_parser.keywords.gperf"
+      {"\377",288},
+#line 23 "gcode_parser.keywords.gperf"
       {"IF",278},
 #line 16 "gcode_parser.keywords.gperf"
       {"NAN",284},
-#line 26 "gcode_parser.keywords.gperf"
-      {"ELSE",279},
-#line 24 "gcode_parser.keywords.gperf"
-      {"\012",262},
+#line 20 "gcode_parser.keywords.gperf"
+      {"TRUE",286},
+#line 31 "gcode_parser.keywords.gperf"
+      {"FALSE",287},
 #line 14 "gcode_parser.keywords.gperf"
       {">",274},
 #line 10 "gcode_parser.keywords.gperf"
       {">=",276},
-#line 23 "gcode_parser.keywords.gperf"
+#line 25 "gcode_parser.keywords.gperf"
       {"INFINITY",285},
 #line 28 "gcode_parser.keywords.gperf"
-      {"-",268},
-      {""},
-#line 31 "gcode_parser.keywords.gperf"
+      {"ELSE",279},
+#line 12 "gcode_parser.keywords.gperf"
+      {"%",269},
+#line 34 "gcode_parser.keywords.gperf"
       {"<",273},
 #line 15 "gcode_parser.keywords.gperf"
       {"<=",275},
-#line 29 "gcode_parser.keywords.gperf"
-      {"AND",264},
 #line 32 "gcode_parser.keywords.gperf"
-      {",",281},
+      {"AND",264},
+#line 22 "gcode_parser.keywords.gperf"
+      {".",280},
+#line 11 "gcode_parser.keywords.gperf"
+      {"!",277},
+#line 33 "gcode_parser.keywords.gperf"
+      {"*",271},
+#line 27 "gcode_parser.keywords.gperf"
+      {"**",270},
       {""},
 #line 30 "gcode_parser.keywords.gperf"
-      {"*",271},
-#line 25 "gcode_parser.keywords.gperf"
-      {"**",270},
+      {"-",268},
+#line 26 "gcode_parser.keywords.gperf"
+      {"\012",262},
+#line 24 "gcode_parser.keywords.gperf"
+      {"~",266},
+#line 13 "gcode_parser.keywords.gperf"
+      {"OR",263},
+      {""},
+#line 35 "gcode_parser.keywords.gperf"
+      {",",281},
+      {""},
+#line 21 "gcode_parser.keywords.gperf"
+      {"=",265},
+#line 9 "gcode_parser.keywords.gperf"
+      {")",283},
       {""},
 #line 17 "gcode_parser.keywords.gperf"
       {"+",267},
       {""},
-#line 19 "gcode_parser.keywords.gperf"
-      {"=",265},
-#line 13 "gcode_parser.keywords.gperf"
-      {"OR",263},
-      {""},
-#line 9 "gcode_parser.keywords.gperf"
-      {")",283},
-      {""},
 #line 18 "gcode_parser.keywords.gperf"
       {"/",272},
-#line 12 "gcode_parser.keywords.gperf"
-      {"%",269},
-      {""},
-#line 27 "gcode_parser.keywords.gperf"
-      {"(",282},
-      {""},
-#line 20 "gcode_parser.keywords.gperf"
-      {".",280},
-#line 11 "gcode_parser.keywords.gperf"
-      {"!",277}
+#line 29 "gcode_parser.keywords.gperf"
+      {"(",282}
     };
 
   if (len <= MAX_WORD_LENGTH && len >= MIN_WORD_LENGTH)

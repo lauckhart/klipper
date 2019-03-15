@@ -17,9 +17,7 @@ typedef struct GCodeParser GCodeParser;
 GCodeParser* gcode_parser_new(
     void* context,
     bool (*error)(void* context, const char* text),
-    bool (*word)(void* context, const char* text),
-    bool (*expr)(void* context, const GCodeNode* node),
-    bool (*eol)(void* context)
+    bool (*statements)(void* context, GCodeStatementNode* statements)
 );
 bool gcode_parser_parse(GCodeParser* parser, const char* buffer,
                         size_t length);
