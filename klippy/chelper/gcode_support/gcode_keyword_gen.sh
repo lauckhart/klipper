@@ -34,7 +34,7 @@ done <<< "$LINES"
 
 # Extract bison's symbol IDs; these are the canonical IDs the lexer must share
 LINES=$(
-    sed -n '/enum yytokentype/{:x;n;/{/bx;/}/b;s/ *//g;s/=/ /;s/,//;p;bx}' \
+    sed -n '/enum yytokentype/{:x;n;/{/bx;/}/b;s/ *TOK_//g;s/=/ /;s/,//;p;bx}' \
     ../gcode_parser.generated.c)
 declare -A IDS_BY_NAME
 while read -r IDENT ID; do

@@ -8,24 +8,29 @@
 
 CC = gcc
 BISON = bison
-CFLAGS = -ggdb
+CFLAGS = -ggdb -fdiagnostics-color=always
 OBJ = \
 	gcode_cli.o \
 	gcode_parser.generated.o \
 	gcode_lexer.o \
-	gcode_keywords.generated.o
+	gcode_keywords.generated.o \
+	gcode_ast.o
+
 KEYWORD_DEPS = \
 	gcode_parser.y \
 	../gcode_parser.generated.c \
-	gcode_lexer_gen.sh
+	gcode_keyword_gen.sh
 
-.DEFAULT_GOAL := gcode_cli
+.DEFAULT_GOAL := gcode-cli
 
 ../gcode_parser.generated.c: gcode_parser.y
 	$(BISON) -Wall -v --report-file=gcode_parser.output -o $@ $<
 
 ../gcode_keywords.generated.c: $(KEYWORD_DEPS)
-	./gcode_lexer_gen.sh
+	./gcode_keyword_gen.sh
+
+gcode_ast.o: ../gcode_ast.c
+	$(CC) -c -o $@ $< $(CFLAGS)
 
 gcode_lexer.o: ../gcode_lexer.c
 	$(CC) -c -o $@ $< $(CFLAGS)

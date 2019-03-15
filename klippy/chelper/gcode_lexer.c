@@ -45,12 +45,12 @@ typedef enum state_t {
     PARSING_HEX_EXPONENT
 } state_t;
 
-struct GCodeLexerSession {
+struct GCodeLexer {
     bool (*error)(void*, const char* format, ...);
     bool (*keyword)(void*, gcode_keyword_t id);
     bool (*identifier)(void*, const char* value);
     bool (*string_literal)(void*, const char* value);
-    bool (*integer_literal)(void*, int64_t value);
+    bool (*int_literal)(void*, int64_t value);
     bool (*float_literal)(void*, double value);
 
     void*   context;
@@ -65,78 +65,80 @@ struct GCodeLexerSession {
     int8_t  digit_count;
 };
 
-GCodeLexerSession* gcode_lexer_start(
+GCodeLexer* gcode_lexer_new(
     void* context,
     bool (*error)(void*, const char* format, ...),
     bool (*keyword)(void*, gcode_keyword_t id),
     bool (*identifier)(void*, const char* value),
     bool (*string_literal)(void*, const char* value),
-    bool (*integer_literal)(void*, int64_t value),
+    bool (*int_literal)(void*, int64_t value),
     bool (*float_literal)(void*, double value)
 ) {
-    GCodeLexerSession* session = malloc(sizeof(GCodeLexerSession));
-    if (!session) {
-        session->error(context, "Out of memory");
+    GCodeLexer* lexer = malloc(sizeof(GCodeLexer));
+    if (!lexer) {
+        error(context, "Out of memory");
         return NULL;
     }
 
-    session->context = context;
+    lexer->context = context;
 
-    session->error = error;
-    session->keyword = keyword;
-    session->identifier = identifier;
-    session->string_literal = string_literal;
-    session->integer_literal = integer_literal;
-    session->float_literal = float_literal;
-    session->expr_nesting = 0;
+    lexer->error = error;
+    lexer->keyword = keyword;
+    lexer->identifier = identifier;
+    lexer->string_literal = string_literal;
+    lexer->int_literal = int_literal;
+    lexer->float_literal = float_literal;
+    lexer->expr_nesting = 0;
 
-    session->token_str = NULL;
-    session->token_length = session->token_limit = 0;
+    lexer->token_str = NULL;
+    lexer->token_length = lexer->token_limit = 0;
+
+    return lexer;
 }
 
-static bool gcode_token_alloc(GCodeLexerSession* session) {
-    if (session->token_str == NULL) {
-        session->token_str = malloc(128);
-        if (!session->token_str) {
-            session->error(session->context, "Out of memory");
+static bool gcode_token_alloc(GCodeLexer* lexer) {
+    if (lexer->token_str == NULL) {
+        lexer->token_str = malloc(128);
+        if (!lexer->token_str) {
+            lexer->error(lexer->context, "Out of memory");
             return false;
         }
     } else {
-        session->token_length *= 2;
-        session->token_str = realloc(session->token_str, session->token_length);
-        if (!session->token_str) {
-            session->error(session->context, "Out of memory");
+        lexer->token_length *= 2;
+        lexer->token_str = realloc(lexer->token_str, lexer->token_length);
+        if (!lexer->token_str) {
+            lexer->error(lexer->context, "Out of memory");
             return false;
         }
     }
     return true;
 }
 
-static inline bool token_char(GCodeLexerSession* session, const char ch) {
-    if (session->token_length == session->token_limit
-        && !gcode_token_alloc(session))
+static inline bool token_char(GCodeLexer* lexer, const char ch) {
+    if (lexer->token_length == lexer->token_limit
+        && !gcode_token_alloc(lexer))
     {
-        session->state = PARSING_COMPLETE;
+        lexer->state = PARSING_COMPLETE;
         return false;
     }
-    session->token_str[session->token_length++] = ch;
+    lexer->token_str[lexer->token_length++] = ch;
     return true;
 }
 
-static bool gcode_add_str_wchar(GCodeLexerSession* session) {
+static bool gcode_add_str_wchar(GCodeLexer* lexer) {
     char buf[MB_CUR_MAX];
-    wctomb(buf, session->integer_value);
+    wctomb(buf, lexer->integer_value);
     for (char* p = buf; *p; p++)
-        if (!token_char(session, *p)) {
-            session->state = PARSING_COMPLETE;
+        if (!token_char(lexer, *p)) {
+            lexer->state = PARSING_COMPLETE;
             return false;
         }
     return true;
 }
 
-static inline bool complete_token(GCodeLexerSession* session) {
-    if (!token_char(session, '\0')) {
-        session->state = PARSING_COMPLETE;
+static inline bool complete_token(GCodeLexer* lexer) {
+    if (!token_char(lexer, '\0')) {
+        lexer->state = PARSING_COMPLETE;
         return false;
     }
 }
@@ -151,25 +153,25 @@ static inline char hex_digit_to_int(char ch) {
     return -1;
 }
 
-static inline void add_safe_digit(GCodeLexerSession* session, int8_t value,
+static inline void add_safe_digit(GCodeLexer* lexer, int8_t value,
                            int8_t base)
  {
-    session->integer_value = session->integer_value * base + value;
-    session->digit_count++;
+    lexer->integer_value = lexer->integer_value * base + value;
+    lexer->digit_count++;
 }
 
-static inline void add_float_digit(GCodeLexerSession* session, float value,
+static inline void add_float_digit(GCodeLexer* lexer, float value,
                             int base)
 {
-    session->float_value = session->float_value * base + value;
+    lexer->float_value = lexer->float_value * base + value;
 }
 
-static inline void add_float_fraction_digit(GCodeLexerSession* session, float value,
+static inline void add_float_fraction_digit(GCodeLexer* lexer, float value,
                                      int base)
 {
-    session->float_value += value
-        / powf(base, session->exponent_sign * session->digit_count);
-    session->digit_count++;
+    lexer->float_value += value
+        / powf(base, lexer->exponent_sign * lexer->digit_count);
+    lexer->digit_count++;
 }
 
 static inline bool is_ident_char(char ch) {
@@ -180,47 +182,47 @@ static inline bool is_ident_char(char ch) {
 }
 
 #define EMIT(callback, args...) { \
-    if (!session->callback(session->context, args)) { \
-        session->state = PARSING_COMPLETE; \
+    if (!lexer->callback(lexer->context, args)) { \
+        lexer->state = PARSING_COMPLETE; \
         return false; \
     } \
 }
 
 #define ERROR(args...) { \
-    session->error(session->context, args); \
-    session->state = PARSING_COMPLETE; \
+    lexer->error(lexer->context, args); \
+    lexer->state = PARSING_COMPLETE; \
     return false; \
 }
 
 #define COMPLETE_TOKEN() { \
-    if (!complete_token(session)) { \
+    if (!complete_token(lexer)) { \
         return false; \
     } \
 }
 
-static inline bool emit_symbol(GCodeLexerSession* session) {
-    GCodeKeywordDetail* detail = gcode_keyword_lookup(session->token_str,
-                                                    session->token_length);
+static inline bool emit_symbol(GCodeLexer* lexer) {
+    GCodeKeywordDetail* detail = gcode_keyword_lookup(lexer->token_str,
+                                                    lexer->token_length);
     if (detail) {
         EMIT(keyword, detail->id);
         return true;
     }
 
     COMPLETE_TOKEN();
-    ERROR("Illegal operator '%s'", session->token_str);
+    ERROR("Illegal operator '%s'", lexer->token_str);
 
     return false;
 }
 
 #define EMIT_IDENTIFIER() { \
     COMPLETE_TOKEN(); \
-    EMIT(identifier, session->token_str); \
-    session->token_length = 0; \
+    EMIT(identifier, lexer->token_str); \
+    lexer->token_length = 0; \
 }
 
-static inline bool emit_keyword_or_identifier(GCodeLexerSession* session) {
-    GCodeKeywordDetail* detail = gcode_keyword_lookup(session->token_str,
-                                                    session->token_length);
+static inline bool emit_keyword_or_identifier(GCodeLexer* lexer) {
+    GCodeKeywordDetail* detail = gcode_keyword_lookup(lexer->token_str,
+                                                    lexer->token_length);
     if (detail) {
         EMIT(keyword, detail->id);
     } else {
@@ -231,22 +233,22 @@ static inline bool emit_keyword_or_identifier(GCodeLexerSession* session) {
 }
 
 #define EMIT_SYMBOL() { \
-    if (!emit_symbol(session)) \
+    if (!emit_symbol(lexer)) \
         return false; \
 }
 
 #define DIGIT_EXCEEDS(value, max, base) \
-    session->integer_value > (max - value) / base
+    lexer->integer_value > (max - value) / base
 
 #define ADD_DIGIT(value, base, max, error) { \
     if (DIGIT_EXCEEDS(value, base, max)) \
         ERROR(error); \
-    add_safe_digit(session, value, base); \
+    add_safe_digit(lexer, value, base); \
 }
 
 #define TOKEN_CHAR(ch) { \
-    if (!token_char(session, ch)) { \
-        session->state = PARSING_COMPLETE; \
+    if (!token_char(lexer, ch)) { \
+        lexer->state = PARSING_COMPLETE; \
         return false; \
     } \
 }
@@ -254,44 +256,49 @@ static inline bool emit_keyword_or_identifier(GCodeLexerSession* session) {
 #define TOKEN_CHAR_UPPER(ch) TOKEN_CHAR(ch >= 'a' && ch <= 'z' ? ch - 32 : ch)
 
 #define ADD_STR_WCHAR() { \
-    if (!gcode_add_str_wchar(session)) \
+    if (!gcode_add_str_wchar(lexer)) \
         return false; \
 }
 
-#define CASE_WHITESPACE case ' ': case '\t': case '\v': case '\r': case '\n'
+#define CASE_SPACE case ' ': case '\t': case '\v': case '\r'
 #define BACK_UP buffer--;
 #define CASE_STR_ESC(esc_ch, ch) case esc_ch: TOKEN_CHAR(ch); break;
 
 static const int UNICODE_MAX = 0x10ffff;
 
-bool gcode_lexer_lex(GCodeLexerSession* session, const char* buffer,
-                     size_t length)
+bool gcode_lexer_scan(GCodeLexer* lexer, const char* buffer,
+                      size_t length)
 {
     const char* end = buffer + length;
     int8_t digit_value;
     for (char ch = *buffer; buffer < end; buffer++)
-        switch (session->state) {
+        switch (lexer->state) {
             case PARSING_WHITESPACE:
                 switch (ch) {
                     case '(':
                         TOKEN_CHAR('(');
                         EMIT_SYMBOL();
-                        session->state = PARSING_EXPRESSION;
+                        lexer->state = PARSING_EXPRESSION;
+                        break;
+
+                    case '\n':
+                        TOKEN_CHAR('\n');
+                        EMIT_SYMBOL();
                         break;
 
                     case ';':
-                        session->state = PARSING_COMMENT;
+                        lexer->state = PARSING_COMMENT;
                         break;
 
-                    CASE_WHITESPACE:
+                    CASE_SPACE:
                         break;
 
                     case '\0':
-                        session->state = PARSING_COMPLETE;
+                        lexer->state = PARSING_COMPLETE;
                         return true;
 
                     default:
-                        session->state = PARSING_WORD;
+                        lexer->state = PARSING_WORD;
                         break;
                 }
                 break;
@@ -301,19 +308,25 @@ bool gcode_lexer_lex(GCodeLexerSession* session, const char* buffer,
 
             case PARSING_WORD:
                 switch (ch) {
-                    CASE_WHITESPACE:
+                    case '\n':
                         EMIT_IDENTIFIER();
-                        session->state = PARSING_WHITESPACE;
+                        if (ch == '\n')
+                            ERROR("Unterminated expression");
+                        break;
+
+                    CASE_SPACE:
+                        EMIT_IDENTIFIER();
+                        lexer->state = PARSING_WHITESPACE;
                         break;
 
                     case ';':
                         EMIT_IDENTIFIER();
-                        session->state = PARSING_COMMENT;
+                        lexer->state = PARSING_COMMENT;
                         break;
 
                     case '(':
                         EMIT_IDENTIFIER();
-                        session->state = PARSING_EXPRESSION;
+                        lexer->state = PARSING_EXPRESSION;
                         break;
 
                     default:
@@ -323,41 +336,48 @@ bool gcode_lexer_lex(GCodeLexerSession* session, const char* buffer,
                 return false;
 
             case PARSING_COMMENT:
-                if (ch == '\n')
-                    session->state = PARSING_WHITESPACE;
+                if (ch == '\n') {
+                    TOKEN_CHAR('\n');
+                    EMIT_SYMBOL();
+                    lexer->state = PARSING_WHITESPACE;
+                }
                 break;
 
             case PARSING_EXPRESSION:
                 switch (ch) {
-                    CASE_WHITESPACE:
+                    case '\n':
+                        ERROR("Unterminated expression");
+                        break;
+
+                    CASE_SPACE:
                         break;
 
                     case '(':
                         TOKEN_CHAR('(');
                         EMIT_SYMBOL();
-                        session->expr_nesting++;
+                        lexer->expr_nesting++;
                         break;
 
                     case ')':
                         TOKEN_CHAR(')');
                         EMIT_SYMBOL();
-                        if (!session->expr_nesting)
-                            session->state = PARSING_WHITESPACE;
+                        if (!lexer->expr_nesting)
+                            lexer->state = PARSING_WHITESPACE;
                         else
-                            session->expr_nesting--;
+                            lexer->expr_nesting--;
                         break;
 
                     case '0':
-                        session->state = PARSING_NUMBER_BASE;
+                        lexer->state = PARSING_NUMBER_BASE;
                         break;
 
                     default:
                         if (ch >= '1' && ch <= '9')
-                            session->state = PARSING_DECIMAL;
+                            lexer->state = PARSING_DECIMAL;
                         else if (is_ident_char(ch))
-                            session->state = PARSING_IDENTIFIER;
+                            lexer->state = PARSING_IDENTIFIER;
                         else
-                            session->state = PARSING_SYMBOL;
+                            lexer->state = PARSING_SYMBOL;
                         BACK_UP;
                         break;
                 }
@@ -371,9 +391,11 @@ bool gcode_lexer_lex(GCodeLexerSession* session, const char* buffer,
                     || ch == '\r'
                     || ch == '\n'
                 ) {
-                    if (!emit_symbol(session))
+                    if (!emit_symbol(lexer))
                         return false;
-                    session->state = PARSING_EXPRESSION;
+                    if (ch == '\n')
+                        ERROR("Unterminated expression");
+                    lexer->state = PARSING_EXPRESSION;
                     BACK_UP;
                 }
                 break;
@@ -382,9 +404,9 @@ bool gcode_lexer_lex(GCodeLexerSession* session, const char* buffer,
                 if (is_ident_char(ch)) {
                     TOKEN_CHAR_UPPER(ch);
                 } else {
-                    if (!emit_keyword_or_identifier(session))
+                    if (!emit_keyword_or_identifier(lexer))
                         return false;
-                    session->state = PARSING_EXPRESSION;
+                    lexer->state = PARSING_EXPRESSION;
                     BACK_UP;
                 }
                 break;
@@ -392,13 +414,17 @@ bool gcode_lexer_lex(GCodeLexerSession* session, const char* buffer,
             case PARSING_STRING:
                 switch (ch) {
                     case '\\':
-                        session->state = PARSING_STRING_ESCAPE;
+                        lexer->state = PARSING_STRING_ESCAPE;
                         break;
 
                     case '"':
                         COMPLETE_TOKEN();
-                        EMIT(string_literal, session->token_str);
-                        session->state = PARSING_EXPRESSION;
+                        EMIT(string_literal, lexer->token_str);
+                        lexer->state = PARSING_EXPRESSION;
+                        break;
+
+                    case '\n':
+                        ERROR("Unterminated string");
                         break;
 
                     default:
@@ -423,31 +449,35 @@ bool gcode_lexer_lex(GCodeLexerSession* session, const char* buffer,
                     CASE_STR_ESC('?', 0x3f);
 
                     case 'x':
-                        session->integer_value = 0;
-                        session->digit_count = 0;
-                        session->state = PARSING_STRING_HEX;
+                        lexer->integer_value = 0;
+                        lexer->digit_count = 0;
+                        lexer->state = PARSING_STRING_HEX;
                         BACK_UP;
                         break;
 
                     case 'u':
-                        session->integer_value = 0;
-                        session->digit_count = 0;
-                        session->state = PARSING_STRING_LOW_UNICODE;
+                        lexer->integer_value = 0;
+                        lexer->digit_count = 0;
+                        lexer->state = PARSING_STRING_LOW_UNICODE;
                         BACK_UP;
                         break;
 
                     case 'U':
-                        session->integer_value = 0;
-                        session->digit_count = 0;
-                        session->state = PARSING_STRING_HIGH_UNICODE;
+                        lexer->integer_value = 0;
+                        lexer->digit_count = 0;
+                        lexer->state = PARSING_STRING_HIGH_UNICODE;
                         BACK_UP;
+                        break;
+
+                    case '\n':
+                        ERROR("Unterminated string");
                         break;
 
                     default:
                         if (ch >= 0 && ch <= 9) {
-                            session->integer_value = 0;
-                            session->digit_count = 0;
-                            session->state = PARSING_STRING_OCTAL;
+                            lexer->integer_value = 0;
+                            lexer->digit_count = 0;
+                            lexer->state = PARSING_STRING_OCTAL;
                             BACK_UP;
                         } else
                             ERROR("Illegal string escape \\%c", ch);
@@ -459,28 +489,28 @@ bool gcode_lexer_lex(GCodeLexerSession* session, const char* buffer,
                 if (ch >= 0 && ch <= 7) {
                     ADD_DIGIT(ch - '0', 8, 255,
                         "Octal escape (\\nnn) exceeds byte value");
-                    if (session->digit_count == 3) {
-                        TOKEN_CHAR(session->integer_value);
-                        session->state = PARSING_STRING;
+                    if (lexer->digit_count == 3) {
+                        TOKEN_CHAR(lexer->integer_value);
+                        lexer->state = PARSING_STRING;
                     }
                 } else if (ch == 8 || ch == 9) {
                     ERROR("Illegal digit in octal escape (\\nnn)");
                 } else {
-                    TOKEN_CHAR(session->integer_value);
+                    TOKEN_CHAR(lexer->integer_value);
                     BACK_UP;
-                    session->state = PARSING_STRING;
+                    lexer->state = PARSING_STRING;
                 }
                 break;
 
             case PARSING_STRING_HEX:
                 digit_value = hex_digit_to_int(ch);
                 if (digit_value == -1) {
-                    if (!session->digit_count)
+                    if (!lexer->digit_count)
                         ERROR("Hex string escape (\\x) requires at least one "
                               "digit");
-                    TOKEN_CHAR(session->integer_value);
+                    TOKEN_CHAR(lexer->integer_value);
                     BACK_UP;
-                    session->state = PARSING_STRING;
+                    lexer->state = PARSING_STRING;
                 }
                 ADD_DIGIT(digit_value, 16, 255,
                           "Hex escape exceeds byte value");
@@ -491,10 +521,10 @@ bool gcode_lexer_lex(GCodeLexerSession* session, const char* buffer,
                 if (digit_value == -1)
                     ERROR("Low unicode escape (\\u) requires exactly four "
                           "digits");
-                add_safe_digit(session, digit_value, 16);
-                if (session->digit_count == 4) {
+                add_safe_digit(lexer, digit_value, 16);
+                if (lexer->digit_count == 4) {
                     ADD_STR_WCHAR();
-                    session->state = PARSING_STRING;
+                    lexer->state = PARSING_STRING;
                 }
                 break;
 
@@ -505,9 +535,9 @@ bool gcode_lexer_lex(GCodeLexerSession* session, const char* buffer,
                           "digits")
                 ADD_DIGIT(digit_value, 16, UNICODE_MAX,
                           "High unicode escape (\\U) exceeds unicode value");
-                if (session->digit_count == 8) {
+                if (lexer->digit_count == 8) {
                     ADD_STR_WCHAR();
-                    session->state = PARSING_STRING;
+                    lexer->state = PARSING_STRING;
                 }
                 break;
 
@@ -515,24 +545,25 @@ bool gcode_lexer_lex(GCodeLexerSession* session, const char* buffer,
                 switch (ch) {
                     case 'b':
                     case 'B':
-                        session->integer_value = 0;
-                        session->state = PARSING_BINARY;
+                        lexer->integer_value = 0;
+                        lexer->state = PARSING_BINARY;
                         break;
 
                     case 'x':
                     case 'X':
-                        session->integer_value = 0;
-                        session->state = PARSING_HEX;
+                        lexer->integer_value = 0;
+                        lexer->state = PARSING_HEX;
                         break;
 
                     default:
                         if (ch >= 0 && ch <= 9) {
-                            session->integer_value = 0;
-                            session->state = PARSING_OCTAL;
+                            lexer->integer_value = 0;
+                            lexer->state = PARSING_OCTAL;
                             BACK_UP;
                         } else {
-                            EMIT(integer_literal, 0);
-                            session->state = PARSING_EXPRESSION;
+                            EMIT(int_literal, 0);
+                            lexer->state = PARSING_EXPRESSION;
+                            BACK_UP;
                         }
                         break;
                 }
@@ -541,28 +572,28 @@ bool gcode_lexer_lex(GCodeLexerSession* session, const char* buffer,
             case PARSING_DECIMAL:
                 switch (ch) {
                     case '.':
-                        session->float_value = session->integer_value;
-                        session->state = PARSING_DECIMAL_FRACTION;
-                        session->digit_count = 0;
+                        lexer->float_value = lexer->integer_value;
+                        lexer->state = PARSING_DECIMAL_FRACTION;
+                        lexer->digit_count = 0;
                         break;
 
                     case 'e':
                     case 'E':
-                        session->float_value = session->integer_value;
-                        session->state = PARSING_DECIMAL_EXPONENT_SIGN;
+                        lexer->float_value = lexer->integer_value;
+                        lexer->state = PARSING_DECIMAL_EXPONENT_SIGN;
                         break;
 
                     default:
                         if (ch >= '0' && ch <= '9') {
                             if (DIGIT_EXCEEDS(ch - '0', INT64_MAX, 10)) {
-                                session->float_value = session->integer_value;
-                                session->state = PARSING_DECIMAL_FLOAT;
+                                lexer->float_value = lexer->integer_value;
+                                lexer->state = PARSING_DECIMAL_FLOAT;
                             } else
-                                add_safe_digit(session, ch - '0', 10);
+                                add_safe_digit(lexer, ch - '0', 10);
                         } else {
-                            EMIT(integer_literal, session->integer_value);
+                            EMIT(int_literal, lexer->integer_value);
+                            lexer->state = PARSING_EXPRESSION;
                             BACK_UP;
-                            session->state = PARSING_EXPRESSION;
                         }
                         break;
                 }
@@ -571,29 +602,29 @@ bool gcode_lexer_lex(GCodeLexerSession* session, const char* buffer,
             case PARSING_HEX:
                 switch (ch) {
                     case '.':
-                        session->float_value = session->integer_value;
-                        session->state = PARSING_HEX_FRACTION;
-                        session->digit_count = 0;
+                        lexer->float_value = lexer->integer_value;
+                        lexer->state = PARSING_HEX_FRACTION;
+                        lexer->digit_count = 0;
                         break;
 
                     case 'p':
                     case 'P':
-                        session->float_value = session->integer_value;
-                        session->state = PARSING_HEX_EXPONENT_SIGN;
+                        lexer->float_value = lexer->integer_value;
+                        lexer->state = PARSING_HEX_EXPONENT_SIGN;
                         break;
 
                     default:
                         digit_value = hex_digit_to_int(ch);
                         if (digit_value != -1) {
                             if (DIGIT_EXCEEDS(digit_value, INT64_MAX, 16)) {
-                                session->float_value = session->integer_value;
-                                session->state = PARSING_HEX_FLOAT;
+                                lexer->float_value = lexer->integer_value;
+                                lexer->state = PARSING_HEX_FLOAT;
                             } else
-                                add_safe_digit(session, digit_value, 10);
+                                add_safe_digit(lexer, digit_value, 10);
                         } else {
-                            EMIT(integer_literal, session->integer_value);
+                            EMIT(int_literal, lexer->integer_value);
+                            lexer->state = PARSING_EXPRESSION;
                             BACK_UP;
-                            session->state = PARSING_EXPRESSION;
                         }
                         break;
                 }
@@ -608,9 +639,9 @@ bool gcode_lexer_lex(GCodeLexerSession* session, const char* buffer,
                 } else if (ch >= '2' && ch <= '9') {
                     ERROR("Illegal binary digit %c", ch);
                 } else {
-                    EMIT(integer_literal, session->integer_value);
+                    EMIT(int_literal, lexer->integer_value);
+                    lexer->state = PARSING_EXPRESSION;
                     BACK_UP;
-                    session->state = PARSING_EXPRESSION;
                 }
                 break;
 
@@ -623,31 +654,31 @@ bool gcode_lexer_lex(GCodeLexerSession* session, const char* buffer,
                 } else if (ch == '8' || ch == '9') {
                     ERROR("Illegal octal digit %c", ch);
                 } else {
-                    EMIT(integer_literal, session->integer_value);
+                    EMIT(int_literal, lexer->integer_value);
+                    lexer->state = PARSING_EXPRESSION;
                     BACK_UP;
-                    session->state = PARSING_EXPRESSION;
                 }
                 break;
 
             case PARSING_DECIMAL_FLOAT:
                 switch (ch) {
                     case '.':
-                        session->state = PARSING_DECIMAL_FRACTION;
-                        session->digit_count = 0;
+                        lexer->state = PARSING_DECIMAL_FRACTION;
+                        lexer->digit_count = 0;
                         break;
 
                     case 'e':
                     case 'E':
-                        session->state = PARSING_DECIMAL_EXPONENT_SIGN;
+                        lexer->state = PARSING_DECIMAL_EXPONENT_SIGN;
                         break;
 
                     default:
                         if (ch >= '0' && ch <= '9')
-                            add_float_digit(session, ch - '0', 10);
+                            add_float_digit(lexer, ch - '0', 10);
                         else {
-                            EMIT(float_literal, session->float_value);
+                            EMIT(float_literal, lexer->float_value);
+                            lexer->state = PARSING_EXPRESSION;
                             BACK_UP;
-                            session->state = PARSING_EXPRESSION;
                         }
                         break;
                 }
@@ -657,16 +688,16 @@ bool gcode_lexer_lex(GCodeLexerSession* session, const char* buffer,
                 switch (ch) {
                     case 'e':
                     case 'E':
-                        session->state = PARSING_DECIMAL_EXPONENT_SIGN;
+                        lexer->state = PARSING_DECIMAL_EXPONENT_SIGN;
                         break;
 
                     default:
                         if (ch >= '0' && ch <= '9')
-                            add_float_fraction_digit(session, ch - '0', 10);
+                            add_float_fraction_digit(lexer, ch - '0', 10);
                         else {
-                            EMIT(float_literal, session->float_value);
+                            EMIT(float_literal, lexer->float_value);
+                            lexer->state = PARSING_EXPRESSION;
                             BACK_UP;
-                            session->state = PARSING_EXPRESSION;
                         }
                         break;
                 }
@@ -674,27 +705,27 @@ bool gcode_lexer_lex(GCodeLexerSession* session, const char* buffer,
 
             case PARSING_DECIMAL_EXPONENT_SIGN:
                 if (ch == '-')
-                    session->exponent_sign = -1;
+                    lexer->exponent_sign = -1;
                 else {
-                    session->exponent_sign = 1;
+                    lexer->exponent_sign = 1;
                     BACK_UP;
                 }
-                session->integer_value = 0;
-                session->digit_count = 0;
-                session->state = PARSING_DECIMAL_EXPONENT;
+                lexer->integer_value = 0;
+                lexer->digit_count = 0;
+                lexer->state = PARSING_DECIMAL_EXPONENT;
                 break;
 
             case PARSING_DECIMAL_EXPONENT:
                 if (ch >= '0' && ch <= '9') {
-                    if (session->digit_count == 3) {
+                    if (lexer->digit_count == 3) {
                         ERROR("Decimal exponent must be 3 digits or less");
                     } else
-                        add_safe_digit(session, ch - '0', 10);
-                } else if (!session->digit_count) {
+                        add_safe_digit(lexer, ch - '0', 10);
+                } else if (!lexer->digit_count) {
                     ERROR("No digits after decimal exponent delimiter");
                 } else {
-                    session->float_value *= powf(10, session->integer_value);
-                    EMIT(float_literal, session->float_value);
+                    lexer->float_value *= powf(10, lexer->integer_value);
+                    EMIT(float_literal, lexer->float_value);
                     BACK_UP;
                 }
                 break;
@@ -702,23 +733,23 @@ bool gcode_lexer_lex(GCodeLexerSession* session, const char* buffer,
             case PARSING_HEX_FLOAT:
                 switch (ch) {
                     case '.':
-                        session->state = PARSING_HEX_FRACTION;
-                        session->digit_count = 0;
+                        lexer->state = PARSING_HEX_FRACTION;
+                        lexer->digit_count = 0;
                         break;
 
                     case 'p':
                     case 'P':
-                        session->state = PARSING_HEX_EXPONENT_SIGN;
+                        lexer->state = PARSING_HEX_EXPONENT_SIGN;
                         break;
 
                     default:
                         digit_value = hex_digit_to_int(ch);
                         if (digit_value != -1)
-                            add_float_digit(session, digit_value, 16);
+                            add_float_digit(lexer, digit_value, 16);
                         else {
-                            EMIT(float_literal, session->float_value);
+                            EMIT(float_literal, lexer->float_value);
+                            lexer->state = PARSING_EXPRESSION;
                             BACK_UP;
-                            session->state = PARSING_EXPRESSION;
                         }
                         break;
                 }
@@ -728,17 +759,17 @@ bool gcode_lexer_lex(GCodeLexerSession* session, const char* buffer,
                 switch (ch) {
                     case 'p':
                     case 'P':
-                        session->state = PARSING_HEX_EXPONENT_SIGN;
+                        lexer->state = PARSING_HEX_EXPONENT_SIGN;
                         break;
 
                     default:
                         digit_value = hex_digit_to_int(ch);
                         if (digit_value  != -1)
-                            add_float_fraction_digit(session, digit_value, 16);
+                            add_float_fraction_digit(lexer, digit_value, 16);
                         else {
-                            EMIT(float_literal, session->float_value);
+                            EMIT(float_literal, lexer->float_value);
+                            lexer->state = PARSING_EXPRESSION;
                             BACK_UP;
-                            session->state = PARSING_EXPRESSION;
                         }
                         break;
                 }
@@ -746,59 +777,68 @@ bool gcode_lexer_lex(GCodeLexerSession* session, const char* buffer,
 
             case PARSING_HEX_EXPONENT_SIGN:
                 if (ch == '-')
-                    session->exponent_sign = -1;
+                    lexer->exponent_sign = -1;
                 else {
-                    session->exponent_sign = 1;
+                    lexer->exponent_sign = 1;
                     BACK_UP;
                 }
-                session->integer_value = 0;
-                session->digit_count = 0;
-                session->state = PARSING_HEX_EXPONENT;
+                lexer->integer_value = 0;
+                lexer->digit_count = 0;
+                lexer->state = PARSING_HEX_EXPONENT;
                 break;
 
             case PARSING_HEX_EXPONENT:
                 digit_value = hex_digit_to_int(ch);
                 if (digit_value != -1) {
-                    if (session->digit_count == 2) {
+                    if (lexer->digit_count == 2) {
                         ERROR("Hex exponent must be 2 digits or less");
                     } else
-                        add_safe_digit(session, digit_value, 16);
-                } else if (!session->digit_count) {
+                        add_safe_digit(lexer, digit_value, 16);
+                } else if (!lexer->digit_count) {
                     ERROR("No digits after hex exponent delimiter");
                 } else {
-                    session->float_value *= powf(16, session->integer_value);
-                    EMIT(float_literal, session->float_value);
+                    lexer->float_value *= powf(16, lexer->integer_value);
+                    EMIT(float_literal, lexer->float_value);
                     BACK_UP;
                 }
                 break;
 
             default:
-                ERROR("Internal: Unknown lexer state %d", session->state);
+                ERROR("Internal: Unknown lexer state %d", lexer->state);
                 break;
         }
 }
 
-void gcode_lexer_finish(GCodeLexerSession* session) {
-    if (session->state != PARSING_COMPLETE)
-        gcode_lexer_lex(session, "\0", 1);
-    switch (session->state) {
+void gcode_lexer_finish(GCodeLexer* lexer) {
+    if (lexer->state != PARSING_COMPLETE)
+        gcode_lexer_scan(lexer, "\0", 1);
+    switch (lexer->state) {
         case PARSING_COMPLETE:
         case PARSING_WHITESPACE:
+        case PARSING_COMMENT:
             break;
 
         case PARSING_STRING:
-            session->error(session->context, "Unterminated string literal");
+            lexer->error(lexer->context, "Unterminated string literal");
             break;
 
         case PARSING_EXPRESSION:
-            session->error(session->context, "Unterminated expression");
+            lexer->error(lexer->context, "Unterminated expression");
             break;
 
         default:
-            session->error(session->context,
+            // Parsing \0 should terminate all other states
+            lexer->error(lexer->context,
                 "Internal error: Lexing terminated in unknown state %d",
-                session->state);
+                lexer->state);
     }
-    free(session->token_str);
-    free(session);
+}
+
+void gcode_lexer_reset(GCodeLexer* lexer) {
+    lexer->state = PARSING_WHITESPACE;
+}
+
+void gcode_lexer_delete(GCodeLexer* lexer) {
+    free(lexer->token_str);
+    free(lexer);
 }
