@@ -9,40 +9,44 @@
 CC = gcc
 BISON = bison
 CFLAGS = -ggdb -fdiagnostics-color=always
-OBJ = \
-	gcode_cli.o \
-	gcode_parser.generated.o \
-	gcode_lexer.o \
-	gcode_keywords.generated.o \
-	gcode_ast.o
+VPATH = .:..
+SOURCES = \
+	gcode_cli.c \
+    gcode_interpreter.c \
+	gcode_parser.generated.c \
+	gcode_lexer.c \
+	gcode_keywords.generated.c \
+	gcode_ast.c
 
 KEYWORD_DEPS = \
 	gcode_parser.y \
 	../gcode_parser.generated.c \
 	gcode_keyword_gen.sh
 
-.DEFAULT_GOAL := gcode-cli
+.DEFAULT_GOAL := out/gcode-cli
 
 ../gcode_parser.generated.c: gcode_parser.y
-	$(BISON) -Wall -v --report-file=gcode_parser.output -o $@ $<
+	$(BISON) -Wall -v --report-file=out/gcode_parser.output -o $@ $<
 
 ../gcode_keywords.generated.c: $(KEYWORD_DEPS)
 	./gcode_keyword_gen.sh
 
-gcode_ast.o: ../gcode_ast.c
+out:
+	mkdir out
+
+out/depend: $(SOURCES)
+	mkdir -p out
+	rm -f out/depend
+	$(CC) $(CFLAGS) -MM $^ > out/depend
+
+out/%.o: %.c
 	$(CC) -c -o $@ $< $(CFLAGS)
 
-gcode_lexer.o: ../gcode_lexer.c
-	$(CC) -c -o $@ $< $(CFLAGS)
-
-gcode_keywords.generated.o: ../gcode_keywords.generated.c
-	$(CC) -c -o $@ $< $(CFLAGS)
-
-gcode_parser.generated.o: ../gcode_parser.generated.c
-	$(CC) -c -o $@ $< $(CFLAGS)
-
-gcode-cli: $(OBJ)
-	$(CC) -o $@ $^ -lm $(CFLAGS)
+out/gcode-cli: out/depend $(addprefix out/, $(SOURCES:.c=.o))
+	$(CC) -o $@ $(filter-out out/depend, $^) -lm $(CFLAGS)
 
 clean:
-	rm -f *.o *.output *.gperf gcode-cli
+	rm -f out/*
+	rmdir out
+
+-include out/depend

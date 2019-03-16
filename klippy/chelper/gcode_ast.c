@@ -5,59 +5,41 @@
 // This file may be distributed under the terms of the GNU GPLv3 license.
 
 #include "gcode_ast.h"
-#include <stdlib.h>
-#include <string.h>
-
-#define GCODE_AST_ALLOC(Type) \
-    GCode ## Type ## Node* n = malloc(sizeof(GCode ## Type ## Node)); \
-    if (!n) \
-        return NULL; \
-
-#define GCODE_RETURN return (GCodeNode*)n;
-
-GCodeNode* gcode_statement_new(GCodeNode* children) {
-    GCODE_AST_ALLOC(Statement);
-    n->children = children;
-    return (GCodeNode*)n;
-}
 
 GCodeNode* gcode_parameter_new(const char* name) {
-    GCODE_AST_ALLOC(Parameter);
-    n->name = strdup(name);
-    if (!n->name) {
-        free(n);
+    if (!name)
         return NULL;
-    }
-    return (GCodeNode*)n;
-}
-
-GCodeNode* gcode_str_new(const char* text) {
-    GCODE_AST_ALLOC(String);
-    n->type = GCODE_STR;
-    n->value = strdup(text);
-    if (!n->value) {
-        free(n);
+    size_t l = strlen(name);
+    GCodeParameterNode* n = malloc(sizeof(GCodeParameterNode));
+    if (!n)
         return NULL;
-    }
+    n->name = (char*)(n + 1);
+    strncpy((char*)(n + 1), name, l + 1);
     return (GCodeNode*)n;
 }
 
 GCodeNode* gcode_bool_new(bool value) {
-    GCODE_AST_ALLOC(Bool);
+    GCodeBoolNode* n = malloc(sizeof(GCodeBoolNode));
+    if (!n)
+        return NULL;
     n->type = GCODE_BOOL;
     n->value = value;
     return (GCodeNode*)n;
 }
 
 GCodeNode* gcode_int_new(int64_t value) {
-    GCODE_AST_ALLOC(Int);
+    GCodeIntNode* n = malloc(sizeof(GCodeIntNode));
+    if (!n)
+        return NULL;
     n->type = GCODE_INT;
     n->value = value;
     return (GCodeNode*)n;
 }
 
 GCodeNode* gcode_float_new(double value) {
-    GCODE_AST_ALLOC(Float);
+    GCodeFloatNode* n = malloc(sizeof(GCodeFloatNode));
+    if (!n)
+        return NULL;
     n->type = GCODE_FLOAT;
     n->value = value;
     return (GCodeNode*)n;
@@ -66,7 +48,9 @@ GCodeNode* gcode_float_new(double value) {
 GCodeNode* gcode_operator_new(gcode_operator_type_t type,
                               GCodeNode* children)
 {
-    GCODE_AST_ALLOC(Operator);
+    GCodeOperatorNode* n = malloc(sizeof(GCodeOperatorNode));
+    if (!n)
+        return NULL;
     n->type = GCODE_OPERATOR;
     n->operator = type;
     n->children = children;
@@ -74,12 +58,14 @@ GCodeNode* gcode_operator_new(gcode_operator_type_t type,
 }
 
 GCodeNode* gcode_function_new(const char* name, GCodeNode* children) {
-    GCODE_AST_ALLOC(Function);
-    n->name = strdup(name);
-    if (!n->name) {
-        free(n);
+    if (!name)
         return NULL;
-    }
+    size_t l = strlen(name);
+    GCodeFunctionNode* n = malloc(sizeof(GCodeFunctionNode) + l + 1);
+    if (!n)
+        return NULL;
+    n->name = (char*)(n + 1);
+    strncpy((char*)(n + 1), name, l + 1);
     n->type = GCODE_FUNCTION;
     n->children = children;
     return (GCodeNode*)n;
@@ -95,11 +81,10 @@ GCodeNode* gcode_add_next(GCodeNode* sibling, GCodeNode* child) {
 }
 
 GCodeNode* gcode_add_child(GCodeNode* parent, GCodeNode* child) {
-    if (!parent || !child
-        || (parent->type != GCODE_OPERATOR
-            && parent->type != GCODE_FUNCTION
-            && parent->type != GCODE_STATEMENT))
+    if (!parent || !child || !gcode_is_parent_node(parent)) {
+        gcode_node_delete(child);
         return parent;
+    }
     GCodeParentNode* p = (GCodeParentNode*)parent;
     if (!p->children) {
         p->children = child;
@@ -115,28 +100,8 @@ GCodeNode* gcode_add_child(GCodeNode* parent, GCodeNode* child) {
 void gcode_node_delete(GCodeNode* node) {
     if (!node)
         return;
-    switch (node->type) {
-        case GCODE_STATEMENT:
-            gcode_node_delete(((GCodeStatementNode*)node)->children);
-            break;
-
-        case GCODE_PARAMETER:
-            free(((GCodeParameterNode*)node)->name);
-            break;
-
-        case GCODE_STR:
-            free(((GCodeStringNode*)node)->value);
-            break;
-
-        case GCODE_OPERATOR:
-            gcode_node_delete(((GCodeOperatorNode*)node)->children);
-            break;
-
-        case GCODE_FUNCTION:
-            free(((GCodeFunctionNode*)node)->name);
-            gcode_node_delete(((GCodeFunctionNode*)node)->children);
-            break;
-    }
+    if (gcode_is_parent_node(node))
+        gcode_node_delete(((GCodeOperatorNode*)node)->children);
     gcode_node_delete(node->next);
     free(node);
 }

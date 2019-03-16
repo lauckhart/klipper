@@ -23,6 +23,8 @@ fi
 
 TAB=$'\t'
 
+mkdir -p out
+
 # Read token strings from bison source file
 LINES=$(
     sed -n '/^%token <keyword>/{s/%token <keyword> *//; p}' \
@@ -42,6 +44,7 @@ while read -r IDENT ID; do
 done <<< "$LINES"
 
 # Generate input for gperf which actually generates the symbol table
+mkdir -p out
 {
     cat <<END
 %{
@@ -56,6 +59,6 @@ END
     for KEY in "${!STRS_BY_NAME[@]}"; do
         echo "${STRS_BY_NAME[$KEY]}$TAB${IDS_BY_NAME[$KEY]}"
     done
-} > gcode_parser.keywords.gperf
+} > out/gcode_parser.keywords.gperf
 
-gperf -e"$TAB" gcode_parser.keywords.gperf > ../gcode_keywords.generated.c
+gperf -e"$TAB" out/gcode_parser.keywords.gperf > ../gcode_keywords.generated.c

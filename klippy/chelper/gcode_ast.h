@@ -1,14 +1,18 @@
 // G-code abstract syntax tree public interface
 //
+// This AST is the output type for GCodeParser.
+//
 // Copyright (C) 2019 Greg Lauckhart <greg@lauckhart.com>
 //
 // This file may be distributed under the terms of the GNU GPLv3 license.
 
-#ifndef GCODE_AST_H
-#define GCODE_AST_H
+#ifndef __GCODE_AST_H
+#define __GCODE_AST_H
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <stdlib.h>
+#include <string.h>
 
 typedef enum gcode_node_type_t {
     GCODE_UNKNOWN_NODE,
@@ -64,14 +68,14 @@ typedef struct GStatementNode {
 typedef struct GCodeParameterNode {
     gcode_node_type_t type;
     GCodeNode* next;
-    char* name;
+    const char* name;
 } GCodeParameterNode;
 
 typedef struct GCodeStrNode {
     gcode_node_type_t type;
     GCodeNode* next;
-    char* value;
-} GCodeStringNode;
+    const char* value;
+} GCodeStrNode;
 
 typedef struct GCodeBoolNode {
     gcode_node_type_t type;
@@ -102,12 +106,48 @@ typedef struct GCodeFunctionNode {
     gcode_node_type_t type;
     GCodeNode* next;
     GCodeNode* children;
-    char* name;
+    const char* name;
 } GCodeFunctionNode;
 
-GCodeNode* gcode_statement_new(GCodeNode* children);
-GCodeNode* gcode_parameter_new(const char* text);
-GCodeNode* gcode_str_new(const char* text);
+static inline size_t gcode_node_length(GCodeNode* node) {
+    size_t l = 0;
+    for (; node; node = node->next)
+        l++;
+    return l;
+}
+
+static inline GCodeNode* gcode_statement_new(GCodeNode* children) {
+    GCodeStatementNode* n = malloc(sizeof(GCodeStatementNode));
+    if (!n)
+        return NULL;
+    n->children = children;
+    return (GCodeNode*)n;
+}
+
+static inline GCodeNode* gcode_str_new(const char* value) {
+    if (!value)
+        return NULL;
+    size_t l = strlen(value);
+    GCodeStrNode* n = malloc(sizeof(GCodeStrNode) + l + 1);
+    if (!n)
+        return NULL;
+    n->type = GCODE_STR;
+    n->value = (char*)(n + 1);
+    strncpy((char*)(n + 1), value, l + 1);
+    return (GCodeNode*)n;
+}
+
+static inline bool gcode_is_parent_node(GCodeNode* node) {
+    switch (node->type) {
+        case GCODE_FUNCTION:
+        case GCODE_OPERATOR:
+        case GCODE_STATEMENT:
+            return true;
+    }
+    return false;
+}
+
+GCodeNode* gcode_parameter_new(const char* name);
 GCodeNode* gcode_bool_new(bool value);
 GCodeNode* gcode_int_new(int64_t value);
 GCodeNode* gcode_float_new(double value);

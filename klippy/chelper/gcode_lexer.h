@@ -1,11 +1,14 @@
 // G-code lexer public interface
 //
+// This is an incremental single-pass lexer that performs minimal heap
+// allocation.  It is used internally by gcode_parser.
+//
 // Copyright (C) 2019 Greg Lauckhart <greg@lauckhart.com>
 //
 // This file may be distributed under the terms of the GNU GPLv3 license.
 
-#ifndef GCODE_LEXER_H
-#define GCODE_LEXER_H
+#ifndef __GCODE_LEXER_H
+#define __GCODE_LEXER_H
 
 #include <stdbool.h>
 #include <stdint.h>
