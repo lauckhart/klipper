@@ -1914,14 +1914,18 @@ static bool error(void* context, const char* format, ...) {
     va_start(argp, format);
     char* buf = malloc(128);
     int rv = vsnprintf(buf, 128, format, argp);
-    if (rv > 0) {
-        buf = realloc(buf, rv);
-        vsnprintf(buf, rv, format, argp);
+    if (rv < 0)
+        parser->error(parser->context, "Internal: Failed to produce error");
+    else {
+        if (rv > 128) {
+            buf = realloc(buf, rv);
+            vsnprintf(buf, rv, format, argp);
+        }
+        parser->error(parser->context, buf);
     }
-    parser->error(parser->context, buf);
     free(buf);
     va_end(argp);
-    return true;
+    return rv >= 0;
 }
 
 #define ERROR(args...) { \

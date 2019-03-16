@@ -36,7 +36,7 @@ typedef struct GCodeVal {
         dict_handle_t dict_val;
         int64_t int_val;
         double float_val;
-        char* text_val;
+        char* str_val;
         bool bool_val;
     };
 } GCodeVal;
@@ -48,9 +48,12 @@ GCodeInterpreter* gcode_interp_new(
     bool (*error)(void* context, const char* text, ...),
     bool (*lookup)(void* context, const char* name, dict_handle_t parent,
                    GCodeVal* result),
-    bool (*serialize)(void* context, dict_handle_t dict, GCodeVal* result),
+    const char* (*serialize)(void* context, dict_handle_t dict),
     bool (*exec)(const char** fields, size_t count)
 );
+char* gcode_interp_str_alloc(GCodeInterpreter* interp, size_t size);
+const char* gcode_interp_printf(GCodeInterpreter* interp, const char* format,
+                                ...);
 bool gcode_interp_exec(GCodeInterpreter* interp, GCodeStatementNode* statement);
 void gcode_interp_delete(GCodeInterpreter* interp);
 
