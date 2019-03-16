@@ -109,7 +109,7 @@ typedef struct GCodeFunctionNode {
     const char* name;
 } GCodeFunctionNode;
 
-static inline size_t gcode_node_length(GCodeNode* node) {
+static inline size_t gcode_node_length(const GCodeNode* node) {
     size_t l = 0;
     for (; node; node = node->next)
         l++;
@@ -137,7 +137,7 @@ static inline GCodeNode* gcode_str_new(const char* value) {
     return (GCodeNode*)n;
 }
 
-static inline bool gcode_is_parent_node(GCodeNode* node) {
+static inline bool gcode_is_parent_node(const GCodeNode* node) {
     switch (node->type) {
         case GCODE_FUNCTION:
         case GCODE_OPERATOR:
@@ -145,6 +145,12 @@ static inline bool gcode_is_parent_node(GCodeNode* node) {
             return true;
     }
     return false;
+}
+
+static inline const GCodeNode* gcode_next(const GCodeNode* node) {
+    if (!node)
+        return NULL;
+    return node->next;
 }
 
 GCodeNode* gcode_parameter_new(const char* name);

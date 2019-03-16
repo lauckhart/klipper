@@ -110,6 +110,8 @@ static inline void add_statement(GCodeParser* parser, GCodeNode* children) {
 %token <keyword> INFINITY "INFINITY"
 %token <keyword> TRUE "TRUE"
 %token <keyword> FALSE "FALSE"
+%token <keyword> LBRACKET "["
+%token <keyword> RBRACKET "]"
 
 // This special keyword is an indicator from the lexer that two expressions
 // should be concatenated.  Results from G-Code such as X(x)
@@ -133,6 +135,8 @@ static inline void add_statement(GCodeParser* parser, GCodeNode* children) {
 %type <node> expr
 %type <node> exprs
 %type <node> expr_list
+%type <node> string
+%type <node> parameter
 
 %%
 
@@ -147,14 +151,15 @@ statement:
 ;
 
 field:
-  STRING                    { $$ = gcode_str_new($1); }
+  string
 | "(" expr ")"              { $$ = $expr; }
 | field[a] BRIDGE field[b]  { $$ = newop2(GCODE_CONCAT, $a, $b); }
 ;
 
 expr:
   "(" expr[e] ")"           { $$ = $e; }
-| STRING                    { $$ = gcode_str_new($1); }
+| string
+| parameter
 | INTEGER                   { $$ = gcode_int_new($1); }
 | FLOAT                     { $$ = gcode_float_new($1); }
 | TRUE                      { $$ = gcode_bool_new(true); }
@@ -178,12 +183,21 @@ expr:
 | expr[a] "<=" expr[b]      { $$ = newop2(GCODE_LTE, $a, $b); }
 | expr[a] "~" expr[b]       { $$ = newop2(GCODE_CONCAT, $a, $b); }
 | expr[a] "=" expr[b]       { $$ = newop2(GCODE_EQUALS, $a, $b); }
-| expr[a] "." expr[b]       { $$ = newop2(GCODE_LOOKUP, $a, $b); }
+| expr[a] "." parameter[b]  { $$ = newop2(GCODE_LOOKUP, $a, $b); }
+| expr[a] "[" expr[b] "]"   { $$ = newop2(GCODE_LOOKUP, $a, $b); }
 | expr[a] IF expr[b] ELSE expr[c]
                             { $$ = newop3(GCODE_IFELSE, $a, $b, $c); }
 | IDENTIFIER[name] "(" exprs[args] ")"
                             { $$ = gcode_function_new($name, $args); }
 ;
+
+parameter:
+  IDENTIFIER                { $$ = gcode_parameter_new($1); }
+;
+
+string:
+  STRING                    { $$ = gcode_str_new($1); }
+ ;
 
 exprs:
   %empty { $$ = NULL; }

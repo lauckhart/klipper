@@ -43,7 +43,7 @@ out/%.o: %.c
 	$(CC) -c -o $@ $< $(CFLAGS)
 
 out/gcode-cli: out/depend $(addprefix out/, $(SOURCES:.c=.o))
-	$(CC) -o $@ $(filter-out out/depend, $^) -lm $(CFLAGS)
+	$(CC) -o $@ $(filter-out out/depend, $^) -lm $(CFLAGS) -fsanitize=leak
 
 clean:
 	rm -f out/*
