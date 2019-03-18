@@ -17,6 +17,20 @@
 typedef struct GCodeLexer GCodeLexer;
 typedef int16_t gcode_keyword_t;
 
+// Instantiate a new lexer.  All callbacks should return false on error.  This
+// puts the lexer into error parsing state, where all tokens are ignored until
+// end-of-statement.
+//
+// Args:
+//     context - an opaque handle passed to all callbacks
+//     error - callback for fatal errors; lexing stops after invocation
+//     keyword - callback for langauage keywords
+//     identifier - callback for non-keyword tokens
+//     string_literal - callback for string values
+//     int_literal - callback for integer values
+//     float_literal - callback for float values
+//
+// Returns the new lexer or NULL on fatal error.
 GCodeLexer* gcode_lexer_new(
     void* context,
     bool (*error)(void* context, const char* format, ...),
@@ -26,10 +40,32 @@ GCodeLexer* gcode_lexer_new(
     bool (*int_literal)(void* context, int64_t value),
     bool (*float_literal)(void* context, double value)
 );
-bool gcode_lexer_scan(GCodeLexer* lexer, const char* buffer,
-                      size_t length);
+
+// Tokenize a string.  Lexical state persists between calls so buffer may
+// terminate anywhere in a statement.
+//
+// Args:
+//     lexer - the lexer
+//     buffer - pointer to characters to scan
+//     length - length of the buffer
+bool gcode_lexer_scan(GCodeLexer* lexer, const char* buffer, size_t length);
+
+// Reset lexical state.  After the call the lexer may be reused.
+//
+// Args:
+//     lexer - the lexer
 void gcode_lexer_reset(GCodeLexer* lexer);
+
+// Terminate lexing and trigger remaining callbacks.
+//
+// Args:
+//     lexer - the lexer
 void gcode_lexer_finish(GCodeLexer* lexer);
+
+// Release lexer resources
+//
+// Args:
+//     lexer - the lexer
 void gcode_lexer_delete(GCodeLexer* lexer);
 
 #endif

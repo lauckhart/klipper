@@ -147,6 +147,7 @@ statements:
 
 statement:
   "\n"                      { $$ = NULL; }
+| error "\n"                { $$ = NULL; }
 | field statement[next]     { $$ = gcode_add_next($field, $next); }
 ;
 
