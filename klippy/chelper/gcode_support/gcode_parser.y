@@ -21,11 +21,9 @@ struct GCodeParser {
     GCodeLexer* lexer;
     bool in_expr;
     struct yypstate* yyps;
-    GCodeNode* statements;
-    GCodeNode* last_statement;
 
     bool (*error)(void*, const char*);
-    bool (*statements_fn)(void*, GCodeStatementNode*);
+    bool (*statement)(void*, GCodeStatementNode*);
 };
 
 static inline GCodeNode* newop2(
@@ -49,15 +47,42 @@ static inline GCodeNode* newop3(
     return op;
 }
 
-static inline void add_statement(GCodeParser* parser, GCodeNode* children) {
-    GCodeNode* statement = gcode_statement_new(children);
-    if (parser->statements)
-        parser->statements = parser->last_statement = statement;
+static inline bool add_statement(GCodeParser* parser, GCodeNode* children) {
+    GCodeStatementNode* statement =
+        (GCodeStatementNode*)gcode_statement_new(children);
+    if (!statement)
+        return false;
+    parser->statement(parser->context, statement);
+    return true;
+}
+
+static bool error(void* context, const char* format, ...) {
+    GCodeParser* parser = context;
+    va_list argp;
+    va_start(argp, format);
+    char* buf = malloc(128);
+    int rv = vsnprintf(buf, 128, format, argp);
+    if (rv < 0)
+        parser->error(parser->context, "Internal: Failed to produce error");
     else {
-        gcode_add_next(parser->last_statement,
-                       statement);
-        parser->last_statement = statement;
+        if (rv > 128) {
+            buf = realloc(buf, rv);
+            vsnprintf(buf, rv, format, argp);
+        }
+        parser->error(parser->context, buf);
     }
+    free(buf);
+    va_end(argp);
+    return rv >= 0;
+}
+
+static void out_of_memory(GCodeParser* parser) {
+    error(parser->context, "Out of memory (allocating parse node)");
+}
+
+#define OOM(val) if (!(val)) { \
+    out_of_memory(parser); \
+    YYERROR; \
 }
 
 %}
@@ -65,6 +90,7 @@ static inline void add_statement(GCodeParser* parser, GCodeNode* children) {
 %define api.pure full
 %define api.push-pull push
 %define api.token.prefix {TOK_}
+%define parse.error verbose
 %start statements
 %param {GCodeParser* parser}
 
@@ -112,6 +138,8 @@ static inline void add_statement(GCodeParser* parser, GCodeNode* children) {
 %token <keyword> FALSE "FALSE"
 %token <keyword> LBRACKET "["
 %token <keyword> RBRACKET "]"
+%token <keyword> LBRACE "{"
+%token <keyword> RBRACE "}"
 
 // This special keyword is an indicator from the lexer that two expressions
 // should be concatenated.  Results from G-Code such as X(x)
@@ -128,7 +156,9 @@ static inline void add_statement(GCodeParser* parser, GCodeNode* children) {
 %left POWER
 %precedence NOT
 %precedence UNARY
-%left DOT
+%precedence DOT
+%precedence LBRACKET
+%left BRIDGE
 
 %type <node> statement
 %type <node> field
@@ -142,62 +172,66 @@ static inline void add_statement(GCodeParser* parser, GCodeNode* children) {
 
 statements:
   %empty
-| statement[s] statements   { if ($s) add_statement(parser, $s); }
+| save_statement statements
+;
+
+save_statement:
+  statement                 { OOM(add_statement(parser, $statement)); }
 ;
 
 statement:
   "\n"                      { $$ = NULL; }
 | error "\n"                { $$ = NULL; }
-| field statement[next]     { $$ = gcode_add_next($field, $next); }
+| field[a] statement[b]     { $$ = gcode_add_next($a, $b); }
 ;
 
 field:
   string
-| "(" expr ")"              { $$ = $expr; }
-| field[a] BRIDGE field[b]  { $$ = newop2(GCODE_CONCAT, $a, $b); }
+| "{" expr "}"              { $$ = $expr; }
+| field[a] BRIDGE field[b]  { OOM($$ = newop2(GCODE_CONCAT, $a, $b)); }
 ;
 
 expr:
   "(" expr[e] ")"           { $$ = $e; }
 | string
 | parameter
-| INTEGER                   { $$ = gcode_int_new($1); }
-| FLOAT                     { $$ = gcode_float_new($1); }
-| TRUE                      { $$ = gcode_bool_new(true); }
-| FALSE                     { $$ = gcode_bool_new(false); }
-| INFINITY                  { $$ = gcode_float_new(INFINITY); }
-| NAN                       { $$ = gcode_float_new(NAN); }
-| "!" expr[a]               { $$ = gcode_operator_new(GCODE_NOT, $a); }
-| "-" expr[a] %prec UNARY   { $$ = gcode_operator_new(GCODE_NEGATE, $a); }
-| "+" expr[a] %prec UNARY   { $$ = $a; }
-| expr[a] "+" expr[b]       { $$ = newop2(GCODE_ADD, $a, $b); }
-| expr[a] "-" expr[b]       { $$ = newop2(GCODE_SUBTRACT, $a, $b); }
-| expr[a] "*" expr[b]       { $$ = newop2(GCODE_MULTIPLY, $a, $b); }
-| expr[a] "/" expr[b]       { $$ = newop2(GCODE_DIVIDE, $a, $b); }
-| expr[a] MODULUS expr[b]   { $$ = newop2(GCODE_MODULUS, $a, $b); }
-| expr[a] POWER expr[b]     { $$ = newop2(GCODE_POWER, $a, $b); }
-| expr[a] AND expr[b]       { $$ = newop2(GCODE_AND, $a, $b); }
-| expr[a] OR expr[b]        { $$ = newop2(GCODE_OR, $a, $b); }
-| expr[a] "<" expr[b]       { $$ = newop2(GCODE_LT, $a, $b); }
-| expr[a] ">" expr[b]       { $$ = newop2(GCODE_GT, $a, $b); }
-| expr[a] ">=" expr[b]      { $$ = newop2(GCODE_GTE, $a, $b); }
-| expr[a] "<=" expr[b]      { $$ = newop2(GCODE_LTE, $a, $b); }
-| expr[a] "~" expr[b]       { $$ = newop2(GCODE_CONCAT, $a, $b); }
-| expr[a] "=" expr[b]       { $$ = newop2(GCODE_EQUALS, $a, $b); }
-| expr[a] "." parameter[b]  { $$ = newop2(GCODE_LOOKUP, $a, $b); }
-| expr[a] "[" expr[b] "]"   { $$ = newop2(GCODE_LOOKUP, $a, $b); }
+| INTEGER                   { OOM($$ = gcode_int_new($1)); }
+| FLOAT                     { OOM($$ = gcode_float_new($1)); }
+| TRUE                      { OOM($$ = gcode_bool_new(true)); }
+| FALSE                     { OOM($$ = gcode_bool_new(false)); }
+| INFINITY                  { OOM($$ = gcode_float_new(INFINITY)); }
+| NAN                       { OOM($$ = gcode_float_new(NAN)); }
+| "!" expr[a]               { OOM($$ = gcode_operator_new(GCODE_NOT, $a)); }
+| "-" expr[a] %prec UNARY   { OOM($$ = gcode_operator_new(GCODE_NEGATE, $a)); }
+| "+" expr[a] %prec UNARY   { OOM($$ = $a); }
+| expr[a] "+" expr[b]       { OOM($$ = newop2(GCODE_ADD, $a, $b)); }
+| expr[a] "-" expr[b]       { OOM($$ = newop2(GCODE_SUBTRACT, $a, $b)); }
+| expr[a] "*" expr[b]       { OOM($$ = newop2(GCODE_MULTIPLY, $a, $b)); }
+| expr[a] "/" expr[b]       { OOM($$ = newop2(GCODE_DIVIDE, $a, $b)); }
+| expr[a] MODULUS expr[b]   { OOM($$ = newop2(GCODE_MODULUS, $a, $b)); }
+| expr[a] POWER expr[b]     { OOM($$ = newop2(GCODE_POWER, $a, $b)); }
+| expr[a] AND expr[b]       { OOM($$ = newop2(GCODE_AND, $a, $b)); }
+| expr[a] OR expr[b]        { OOM($$ = newop2(GCODE_OR, $a, $b)); }
+| expr[a] "<" expr[b]       { OOM($$ = newop2(GCODE_LT, $a, $b)); }
+| expr[a] ">" expr[b]       { OOM($$ = newop2(GCODE_GT, $a, $b)); }
+| expr[a] ">=" expr[b]      { OOM($$ = newop2(GCODE_GTE, $a, $b)); }
+| expr[a] "<=" expr[b]      { OOM($$ = newop2(GCODE_LTE, $a, $b)); }
+| expr[a] "~" expr[b]       { OOM($$ = newop2(GCODE_CONCAT, $a, $b)); }
+| expr[a] "=" expr[b]       { OOM($$ = newop2(GCODE_EQUALS, $a, $b)); }
+| expr[a] "." parameter[b]  { OOM($$ = newop2(GCODE_LOOKUP, $a, $b)); }
+| expr[a] "[" expr[b] "]"   { OOM($$ = newop2(GCODE_LOOKUP, $a, $b)); }
 | expr[a] IF expr[b] ELSE expr[c]
-                            { $$ = newop3(GCODE_IFELSE, $a, $b, $c); }
+                            { OOM($$ = newop3(GCODE_IFELSE, $a, $b, $c)); }
 | IDENTIFIER[name] "(" exprs[args] ")"
-                            { $$ = gcode_function_new($name, $args); }
+                            { OOM($$ = gcode_function_new($name, $args)); }
 ;
 
 parameter:
-  IDENTIFIER                { $$ = gcode_parameter_new($1); }
+  IDENTIFIER                { OOM($$ = gcode_parameter_new($1)); }
 ;
 
 string:
-  STRING                    { $$ = gcode_str_new($1); }
+  STRING                    { OOM($$ = gcode_str_new($1)); }
  ;
 
 exprs:
@@ -212,43 +246,12 @@ expr_list:
 
 %%
 
-static bool error(void* context, const char* format, ...) {
-    GCodeParser* parser = context;
-    va_list argp;
-    va_start(argp, format);
-    char* buf = malloc(128);
-    int rv = vsnprintf(buf, 128, format, argp);
-    if (rv < 0)
-        parser->error(parser->context, "Internal: Failed to produce error");
-    else {
-        if (rv > 128) {
-            buf = realloc(buf, rv);
-            vsnprintf(buf, rv, format, argp);
-        }
-        parser->error(parser->context, buf);
-    }
-    free(buf);
-    va_end(argp);
-    return rv >= 0;
-}
-
-#define ERROR(args...) { \
-    parser->error(parser->context, args); \
-    return false; \
-}
-
-#define ASSERT_EXPR { \
-    if (!parser->in_expr) \
-        ERROR("Internal: Unexpected token type"); \
-}
-
 static void yyerror(GCodeParser* parser, const char* msg) {
     error(parser, "G-Code parse error: %s", msg);
 }
 
 static bool lex_keyword(void* context, gcode_keyword_t id) {
     GCodeParser* parser = context;
-    ASSERT_EXPR;
 
     yypush_parse(parser->yyps, id, NULL, parser);
 
@@ -275,7 +278,6 @@ static bool lex_string_literal(void* context, const char* value) {
 
 static bool lex_int_literal(void* context, int64_t value) {
     GCodeParser* parser = context;
-    ASSERT_EXPR;
 
     YYSTYPE yys = { .int_value = value };
     yypush_parse(parser->yyps, TOK_INTEGER, &yys, parser);
@@ -285,7 +287,6 @@ static bool lex_int_literal(void* context, int64_t value) {
 
 static bool lex_float_literal(void* context, double value) {
     GCodeParser* parser = context;
-    ASSERT_EXPR;
 
     YYSTYPE yys = { .float_value = value };
     yypush_parse(parser->yyps, TOK_FLOAT, &yys, parser);
@@ -296,20 +297,19 @@ static bool lex_float_literal(void* context, double value) {
 GCodeParser* gcode_parser_new(
     void* context,
     bool (*error_fn)(void*, const char*),
-    bool (*statements_fn)(void*, GCodeStatementNode*))
+    bool (*statement)(void*, GCodeStatementNode*))
 {
     GCodeParser* parser = malloc(sizeof(GCodeParser));
     if (!parser) {
-        error(context, "Out of memory");
+        error(context, "Out of memory (gcode_parser_new)");
         return NULL;
     }
 
     parser->context = context;
-    parser->yyps = NULL;
     parser->in_expr = false;
 
     parser->error = error_fn;
-    parser->statements_fn = statements_fn;
+    parser->statement = statement;
 
     parser->lexer = gcode_lexer_new(
         parser,
@@ -325,24 +325,28 @@ GCodeParser* gcode_parser_new(
         return NULL;
     }
 
+    parser->yyps = yypstate_new();
+    if (!parser->yyps) {
+        error(context, "Out of memory (gcode_parser_new)");
+        gcode_lexer_delete(parser->lexer);
+        free(parser);
+    }
+
     return parser;
 }
 
-bool gcode_parser_parse(GCodeParser* parser, const char* buffer,
+void gcode_parser_parse(GCodeParser* parser, const char* buffer,
                         size_t length)
 {
-    parser->statements = NULL;
-    if (!gcode_lexer_scan(parser->lexer, buffer, length)) {
-        gcode_node_delete(parser->statements);
-        return false;
-    }
-    if (parser->statements)
-        parser->statements_fn(parser->context,
-                              (GCodeStatementNode*)parser->statements);
+    gcode_lexer_scan(parser->lexer, buffer, length);
 }
 
 void gcode_parser_finish(GCodeParser* parser) {
     gcode_lexer_finish(parser->lexer);
+}
+
+void gcode_parser_delete(GCodeParser* parser) {
+    gcode_lexer_delete(parser->lexer);
     if (parser->yyps)
         yypstate_delete(parser->yyps);
     free(parser);

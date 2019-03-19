@@ -1,5 +1,5 @@
 /* ANSI-C code produced by gperf version 3.1 */
-/* Command-line: gperf -e'	' out/gcode_parser.keywords.gperf  */
+/* Command-line: gperf -l -e'	' out/gcode_parser.keywords.gperf  */
 /* Computed positions: -k'1' */
 
 #if !((' ' == 32) && ('!' == 33) && ('"' == 34) && ('#' == 35) \
@@ -29,14 +29,12 @@
 #error "gperf generated tables don't work with this execution character set. Please report a bug to <bug-gperf@gnu.org>."
 #endif
 
-#line 1 "out/gcode_parser.keywords.gperf"
 
 #include <stdlib.h>
 #include <string.h>
-#line 7 "out/gcode_parser.keywords.gperf"
 struct GCodeKeywordDetail { const char* name; int id; };
 
-#define TOTAL_KEYWORDS 29
+#define TOTAL_KEYWORDS 31
 #define MIN_WORD_LENGTH 1
 #define MAX_WORD_LENGTH 8
 #define MIN_HASH_VALUE 1
@@ -56,18 +54,18 @@ hash (register const char *str, register size_t len)
   static unsigned char asso_values[] =
     {
       33, 33, 33, 33, 33, 33, 33, 33, 33, 33,
-      29, 33, 33, 33, 33, 33, 33, 33, 33, 33,
+      22, 33, 33, 33, 33, 33, 33, 33, 33, 33,
       33, 33, 33, 33, 33, 33, 33, 33, 33, 33,
-      33, 33, 33, 24, 33, 33, 33, 19, 33, 33,
-      14,  9, 15, 31, 26, 28, 23, 18, 33, 33,
+      33, 33, 33, 17, 33, 33, 33, 29, 33, 33,
+      24, 19, 15, 14,  9, 31, 26, 28, 33, 33,
       33, 33, 33, 33, 33, 33, 33, 33, 33, 33,
-      10, 13,  5, 33, 33, 10, 33, 33, 33,  5,
+      10, 23,  5, 33, 33, 10, 33, 33, 33, 15,
        0, 33, 33,  0, 33, 33, 33, 33,  0, 20,
-      33, 33, 33, 33,  0, 33, 33, 33, 33, 33,
-      33, 30, 33, 25, 33, 33, 33, 33, 33, 33,
+      33, 33, 33, 33, 10, 33, 33, 33, 33, 33,
+      33,  8, 33,  3, 33, 33, 33, 33, 33, 33,
       33, 33, 33, 33, 33, 33, 33, 33, 33, 33,
       33, 33, 33, 33, 33, 33, 33, 33, 33, 33,
-      33, 33, 33, 33, 33, 33, 20, 33, 33, 33,
+      33, 33, 33, 30, 33, 25, 20, 33, 33, 33,
       33, 33, 33, 33, 33, 33, 33, 33, 33, 33,
       33, 33, 33, 33, 33, 33, 33, 33, 33, 33,
       33, 33, 33, 33, 33, 33, 33, 33, 33, 33,
@@ -88,70 +86,47 @@ hash (register const char *str, register size_t len)
 struct GCodeKeywordDetail *
 gcode_keyword_lookup (register const char *str, register size_t len)
 {
+  static unsigned char lengthtable[] =
+    {
+       0,  1,  2,  3,  1,  5,  1,  2,  8,  1,  1,  1,  2,  3,
+       4,  1,  1,  2,  1,  4,  1,  1,  2,  1,  1,  1,  1,  1,
+       0,  1,  1,  1,  1
+    };
   static struct GCodeKeywordDetail wordlist[] =
     {
       {""},
-#line 19 "out/gcode_parser.keywords.gperf"
-      {"\377",290},
-#line 23 "out/gcode_parser.keywords.gperf"
+      {"\377",292},
       {"IF",278},
-#line 16 "out/gcode_parser.keywords.gperf"
       {"NAN",284},
-#line 20 "out/gcode_parser.keywords.gperf"
-      {"TRUE",286},
-#line 31 "out/gcode_parser.keywords.gperf"
-      {"FALSE",287},
-#line 14 "out/gcode_parser.keywords.gperf"
-      {">",274},
-#line 10 "out/gcode_parser.keywords.gperf"
-      {">=",276},
-#line 25 "out/gcode_parser.keywords.gperf"
-      {"INFINITY",285},
-#line 28 "out/gcode_parser.keywords.gperf"
-      {"ELSE",279},
-#line 9 "out/gcode_parser.keywords.gperf"
-      {")",283},
-#line 34 "out/gcode_parser.keywords.gperf"
-      {"<",273},
-#line 15 "out/gcode_parser.keywords.gperf"
-      {"<=",275},
-#line 32 "out/gcode_parser.keywords.gperf"
-      {"AND",264},
-#line 21 "out/gcode_parser.keywords.gperf"
-      {"=",265},
-#line 29 "out/gcode_parser.keywords.gperf"
-      {"(",282},
-#line 33 "out/gcode_parser.keywords.gperf"
-      {"*",271},
-#line 27 "out/gcode_parser.keywords.gperf"
-      {"**",270},
-      {""},
-#line 18 "out/gcode_parser.keywords.gperf"
-      {"/",272},
-#line 12 "out/gcode_parser.keywords.gperf"
-      {"%",269},
-#line 24 "out/gcode_parser.keywords.gperf"
-      {"~",266},
-#line 13 "out/gcode_parser.keywords.gperf"
-      {"OR",263},
-      {""},
-#line 22 "out/gcode_parser.keywords.gperf"
-      {".",280},
-#line 11 "out/gcode_parser.keywords.gperf"
-      {"!",277},
-#line 36 "out/gcode_parser.keywords.gperf"
       {"]",289},
-#line 35 "out/gcode_parser.keywords.gperf"
-      {",",281},
-      {""},
-#line 30 "out/gcode_parser.keywords.gperf"
-      {"-",268},
-#line 26 "out/gcode_parser.keywords.gperf"
-      {"\012",262},
-#line 37 "out/gcode_parser.keywords.gperf"
+      {"FALSE",287},
+      {">",274},
+      {">=",276},
+      {"INFINITY",285},
       {"[",288},
-#line 17 "out/gcode_parser.keywords.gperf"
-      {"+",267}
+      {",",281},
+      {"<",273},
+      {"<=",275},
+      {"AND",264},
+      {"TRUE",286},
+      {"+",267},
+      {"*",271},
+      {"**",270},
+      {"!",277},
+      {"ELSE",279},
+      {")",283},
+      {"~",266},
+      {"OR",263},
+      {"\012",262},
+      {"=",265},
+      {"(",282},
+      {"}",291},
+      {".",280},
+      {""},
+      {"/",272},
+      {"%",269},
+      {"{",290},
+      {"-",268}
     };
 
   if (len <= MAX_WORD_LENGTH && len >= MIN_WORD_LENGTH)
@@ -159,12 +134,13 @@ gcode_keyword_lookup (register const char *str, register size_t len)
       register unsigned int key = hash (str, len);
 
       if (key <= MAX_HASH_VALUE)
-        {
-          register const char *s = wordlist[key].name;
+        if (len == lengthtable[key])
+          {
+            register const char *s = wordlist[key].name;
 
-          if (*str == *s && !strcmp (str + 1, s + 1))
-            return &wordlist[key];
-        }
+            if (*str == *s && !memcmp (str + 1, s + 1, len - 1))
+              return &wordlist[key];
+          }
     }
   return 0;
 }

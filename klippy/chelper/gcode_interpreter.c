@@ -23,22 +23,22 @@ struct GCodeInterpreter {
     size_t str_length;
     size_t str_limit;
 
-    bool (*error)(void*, const char*, ...);
+    bool (*error)(void*, const char*);
     bool (*lookup)(void*,  const GCodeVal*, dict_handle_t, GCodeVal*);
     const char* (*serialize)(void*, dict_handle_t);
-    bool (*exec)(const char**, size_t);
+    bool (*exec)(void*, const char**, size_t);
 };
 
 GCodeInterpreter* gcode_interp_new(
     void* context,
-    bool (*error)(void*, const char*, ...),
+    bool (*error)(void*, const char*),
     bool (*lookup)(void*, const GCodeVal*, dict_handle_t, GCodeVal*),
     const char* (*serialize)(void*, dict_handle_t),
-    bool (*exec)(const char**, size_t))
+    bool (*exec)(void*, const char**, size_t))
 {
     GCodeInterpreter* interp = malloc(sizeof(GCodeInterpreter));
     if (!interp) {
-        error(context, "Out of memory");
+        error(context, "Out of memory (gcode_interp_new)");
         return NULL;
     }
 
@@ -46,6 +46,7 @@ GCodeInterpreter* gcode_interp_new(
     interp->error = error;
     interp->lookup = lookup;
     interp->serialize = serialize;
+    interp->exec = exec;
 
     interp->field_buf = NULL;
     interp->field_count = 0;
@@ -56,9 +57,23 @@ GCodeInterpreter* gcode_interp_new(
     interp->str_limit = 0;
 }
 
-#define ERROR(args...) { \
-    interp->error(interp->context, args); \
-    return false; \
+static void error(GCodeInterpreter* interp, const char* format, ...) {
+    va_list argp;
+    va_start(argp, format);
+    char* buf = malloc(128);
+    int rv = vsnprintf(buf, 128, format, argp);
+    if (rv < 0)
+        interp->error(interp->context,
+                      "Internal: Error formatting error message");
+    else {
+        if (rv > 128) {
+            buf = realloc(buf, rv);
+            vsnprintf(buf, rv, format, argp);
+        }
+        interp->error(interp->context, buf);
+    }
+    free(buf);
+    va_end(argp);
 }
 
 static bool str_expand(GCodeInterpreter* interp, size_t size) {
@@ -69,7 +84,8 @@ static bool str_expand(GCodeInterpreter* interp, size_t size) {
         interp->str_buf = realloc(interp->str_buf, alloc_size);
         if (!interp->str_buf) {
             interp->str_length = 0;
-            ERROR("Out of memory");
+            error(interp, "Out of memory (str_expand)");
+            return false;
         }
     }
     return true;
@@ -134,26 +150,26 @@ inline const char* gcode_str_cast(GCodeInterpreter* interp, const GCodeVal* val)
         return "";
 
     switch (val->type) {
-        GCODE_VAL_STR:
-            return val->str_val;
+    case GCODE_VAL_STR:
+        return val->str_val;
 
-        GCODE_VAL_BOOL:
-            return val->bool_val ? "true" : "false";
+    case GCODE_VAL_BOOL:
+        return val->bool_val ? "true" : "false";
 
-        GCODE_VAL_INT:
-            return gcode_interp_printf(interp, PRIu64, val->int_val);
+    case GCODE_VAL_INT:
+        return gcode_interp_printf(interp, PRIu64, val->int_val);
 
-        GCODE_VAL_FLOAT:
-            return gcode_interp_printf(interp, "%f", val->float_val);
+    case GCODE_VAL_FLOAT:
+        return gcode_interp_printf(interp, "%f", val->float_val);
 
-        GCODE_VAL_DICT:
-            if (interp->serialize)
-                return interp->serialize(interp->context, val->dict_val);
-            else
-                return "<obj>";
+    case GCODE_VAL_DICT:
+        if (interp->serialize)
+            return interp->serialize(interp->context, val->dict_val);
+        else
+            return "<obj>";
 
-        default:
-            return "";
+    default:
+        return "";
     }
 }
 
@@ -162,20 +178,20 @@ inline int64_t gcode_int_cast(const GCodeVal* val) {
         return 0;
 
     switch (val->type) {
-        case GCODE_VAL_STR:
-            return strtoll(val->str_val, NULL, 0);
+    case GCODE_VAL_STR:
+        return strtoll(val->str_val, NULL, 0);
 
-        case GCODE_VAL_BOOL:
-            return val->bool_val;
+    case GCODE_VAL_BOOL:
+        return val->bool_val;
 
-        case GCODE_VAL_INT:
-            return val->int_val;
+    case GCODE_VAL_INT:
+        return val->int_val;
 
-        case GCODE_VAL_FLOAT:
-            return val->float_val;
+    case GCODE_VAL_FLOAT:
+        return val->float_val;
 
-        default:
-            return 0;
+    default:
+        return 0;
     }
 }
 
@@ -184,40 +200,40 @@ inline bool gcode_bool_cast(const GCodeVal* val) {
         return false;
 
     switch (val->type) {
-        case GCODE_VAL_STR: {
-            const char* s = val->str_val;
-            if (s[0] == '\0')
-                return false;
-            if ((s[0] == 'f' || s[0] == 'F')
-                && (s[1] == 'a' || s[1] == 'A')
-                && (s[2] == 'l' || s[2] == 'L')
-                && (s[3] == 's' || s[3] == 'S')
-                && (s[4] == 'e' || s[4] == 'E')
+    case GCODE_VAL_STR: {
+        const char* s = val->str_val;
+        if (s[0] == '\0')
+            return false;
+        if ((s[0] == 'f' || s[0] == 'F')
+            && (s[1] == 'a' || s[1] == 'A')
+            && (s[2] == 'l' || s[2] == 'L')
+            && (s[3] == 's' || s[3] == 'S')
+            && (s[4] == 'e' || s[4] == 'E')
+        )
+            return false;
+        for (; *s; s++)
+            if ((*s != ' ')
+                && (*s != '\t')
+                && (*s != '\v')
+                && (*s != '\r')
+                && (*s != '\n')
+                && (*s != '0')
             )
-                return false;
-            for (; *s; s++)
-                if ((*s != ' ')
-                    && (*s != '\t')
-                    && (*s != '\v')
-                    && (*s != '\r')
-                    && (*s != '\n')
-                    && (*s != '0')
-                )
-                    return true;
-            return false;
-        }
+                return true;
+        return false;
+    }
 
-        case GCODE_VAL_BOOL:
-            return val->bool_val;
+    case GCODE_VAL_BOOL:
+        return val->bool_val;
 
-        case GCODE_VAL_INT:
-            return val->int_val;
+    case GCODE_VAL_INT:
+        return val->int_val;
 
-        case GCODE_VAL_FLOAT:
-            return val->float_val;
+    case GCODE_VAL_FLOAT:
+        return val->float_val;
 
-        default:
-            return false;
+    default:
+        return false;
     }
 }
 
@@ -226,20 +242,20 @@ inline double gcode_float_cast(const GCodeVal* val) {
         return 0;
 
     switch (val->type) {
-        case GCODE_VAL_STR:
-            return atof(val->str_val);
+    case GCODE_VAL_STR:
+        return atof(val->str_val);
 
-        case GCODE_VAL_BOOL:
-            return val->bool_val;
+    case GCODE_VAL_BOOL:
+        return val->bool_val;
 
-        case GCODE_VAL_INT:
-            return val->int_val;
+    case GCODE_VAL_INT:
+        return val->int_val;
 
-        case GCODE_VAL_FLOAT:
-            return val->float_val;
+    case GCODE_VAL_FLOAT:
+        return val->float_val;
 
-        default:
-            return true;
+    default:
+        return true;
     }
 }
 
@@ -262,7 +278,7 @@ static bool compare(GCodeInterpreter* interp, GCodeVal* a, GCodeVal* b,
                     int8_t* result)
 {
     if (!a || !b)
-        ERROR("Internal: NULL comparison");
+        interp->error(interp->context, "Internal: NULL comparison");
 
     if (a->type == GCODE_VAL_DICT || b->type == GCODE_VAL_DICT) {
         *result = a->type == b->type && a->dict_val == b->dict_val ? 0 : 2;
@@ -270,40 +286,40 @@ static bool compare(GCodeInterpreter* interp, GCodeVal* a, GCodeVal* b,
     }
 
     switch (a->type) {
-        case GCODE_VAL_STR: {
-            const char* bstr = gcode_str_cast(interp, b);
-            if (!bstr)
-                return false;
-            *result = strcmp(a->str_val, bstr) == 0;
-            break;
-        }
+    case GCODE_VAL_STR: {
+        const char* bstr = gcode_str_cast(interp, b);
+        if (!bstr)
+            return false;
+        *result = strcmp(a->str_val, bstr) == 0;
+        break;
+    }
 
-        case GCODE_VAL_BOOL: {
-            bool val = gcode_bool_cast(b);
-            *result = a->bool_val < val ? -1 : a->bool_val > val ? 1 : 0;
-            break;
-        }
+    case GCODE_VAL_BOOL: {
+        bool val = gcode_bool_cast(b);
+        *result = a->bool_val < val ? -1 : a->bool_val > val ? 1 : 0;
+        break;
+    }
 
-        case GCODE_VAL_INT:
-            switch (b->type) {
-                case GCODE_VAL_STR:
-                case GCODE_VAL_FLOAT:
-                    return compare_floats(gcode_float_cast(a),
-                                          gcode_float_cast(b));
+    case GCODE_VAL_INT:
+        switch (b->type) {
+            case GCODE_VAL_STR:
+            case GCODE_VAL_FLOAT:
+                return compare_floats(gcode_float_cast(a), gcode_float_cast(b));
 
-                default: {
-                    int bi = gcode_int_cast(b);
-                    *result = a->int_val < bi ? -1 : a->int_val > bi ? 1 : 0;
-                    break;
-                }
+            default: {
+                int bi = gcode_int_cast(b);
+                *result = a->int_val < bi ? -1 : a->int_val > bi ? 1 : 0;
+                break;
             }
+        }
 
-        case GCODE_VAL_FLOAT:
-            return compare_floats(gcode_float_cast(a), gcode_float_cast(b));
-            break;
+    case GCODE_VAL_FLOAT:
+        return compare_floats(gcode_float_cast(a), gcode_float_cast(b));
+        break;
 
-        default:
-            ERROR("Internal: Comparison of unknown value type %d", a->type);
+    default:
+        error(interp, "Internal: Comparison of unknown value type %d", a->type);
+        return false;
     }
     return true;
 }
@@ -333,14 +349,14 @@ static bool compare(GCodeInterpreter* interp, GCodeVal* a, GCodeVal* b,
 #define BINARY_NUM_OP(int_case, float_case) \
     EVAL2 \
     switch (force_to_num2(&a, &b)) { \
-        case GCODE_VAL_INT: \
-            output->type = GCODE_VAL_INT; \
-            output->int_val = int_case; \
-            break; \
-        case GCODE_VAL_FLOAT: \
-            output->type = GCODE_VAL_FLOAT; \
-            output->float_val = float_case; \
-            break; \
+    case GCODE_VAL_INT: \
+        output->type = GCODE_VAL_INT; \
+        output->int_val = int_case; \
+        break; \
+    case GCODE_VAL_FLOAT: \
+        output->type = GCODE_VAL_FLOAT; \
+        output->float_val = float_case; \
+        break; \
     }
 
 static inline bool lookup(GCodeInterpreter* interp,
@@ -357,19 +373,19 @@ static inline bool lookup(GCodeInterpreter* interp,
 
 static inline gcode_val_type_t force_to_num(GCodeVal* val) {
     switch (val->type) {
-        case GCODE_VAL_INT:
-        case GCODE_VAL_FLOAT:
-            break;
+    case GCODE_VAL_INT:
+    case GCODE_VAL_FLOAT:
+        break;
 
-        case GCODE_VAL_STR:
-            val->float_val = gcode_float_cast(val);
-            val->type = GCODE_VAL_FLOAT;
-            break;
+    case GCODE_VAL_STR:
+        val->float_val = gcode_float_cast(val);
+        val->type = GCODE_VAL_FLOAT;
+        break;
 
-        default:
-            val->int_val = gcode_int_cast(val);
-            val->type = GCODE_VAL_INT;
-            break;
+    default:
+        val->int_val = gcode_int_cast(val);
+        val->type = GCODE_VAL_INT;
+        break;
     }
     return val->type;
 }
@@ -377,19 +393,19 @@ static inline gcode_val_type_t force_to_num(GCodeVal* val) {
 static inline gcode_val_type_t force_to_num2(GCodeVal* a, GCodeVal* b) {
     force_to_num(a);
     switch (force_to_num(b)) {
-        case GCODE_VAL_INT:
-            if (a->type == GCODE_VAL_FLOAT) {
-                b->type = GCODE_VAL_FLOAT;
-                b->float_val = b->int_val;
-            }
-            break;
+    case GCODE_VAL_INT:
+        if (a->type == GCODE_VAL_FLOAT) {
+            b->type = GCODE_VAL_FLOAT;
+            b->float_val = b->int_val;
+        }
+        break;
 
-        case GCODE_VAL_FLOAT:
-            if (a->type == GCODE_VAL_INT) {
-                a->type = GCODE_VAL_FLOAT;
-                a->float_val = a->float_val;
-            }
-            break;
+    case GCODE_VAL_FLOAT:
+        if (a->type == GCODE_VAL_INT) {
+            a->type = GCODE_VAL_FLOAT;
+            a->float_val = a->float_val;
+        }
+        break;
     }
     return a->type;
 }
@@ -400,237 +416,243 @@ static inline bool eval_operator(GCodeInterpreter* interp,
 {
     const GCodeNode* child = input->children;
     switch (input->type) {
-        case GCODE_AND: {
-            EVAL2;
-            SET_BOOL(gcode_bool_cast(&a) && gcode_bool_cast(&b));
-            break;
-        }
-
-        case GCODE_OR: {
-            EVAL2;
-            SET_BOOL(gcode_bool_cast(&a) || gcode_bool_cast(&b));
-            break;
-        }
-
-        case GCODE_EQUALS: {
-            EVAL2;
-            COMPARE;
-            SET_BOOL(cval == 0);
-            break;
-        }
-
-        case GCODE_CONCAT: {
-            EVAL2;
-            const char* s1 = gcode_str_cast(interp, &a);
-            if (!s1)
-                return false;
-            const char* s2 = gcode_str_cast(interp, &b);
-            if (!s2)
-                return false;
-            int l1 = strlen(s1);
-            int l2 = strlen(s2);
-            output->type = GCODE_VAL_STR;
-            char* s = gcode_interp_str_alloc(interp, l1 + l2);
-            if (!s)
-                return false;
-            memcpy(s, s1, l1);
-            memcpy(s + l1, s2, l2);
-            s[l1 + l2] = '\0';
-            output->str_val = s;
-            break;
-        }
-
-        case GCODE_ADD: {
-            BINARY_NUM_OP(
-                a.int_val + b.int_val,
-                a.float_val + b.float_val
-            );
-            break;
-        }
-
-        case GCODE_SUBTRACT: {
-            BINARY_NUM_OP(
-                a.int_val - b.int_val,
-                a.float_val - b.float_val
-            );
-            break;
-        }
-
-        case GCODE_MODULUS: {
-            BINARY_NUM_OP(
-                b.int_val == 0 ? NAN : a.int_val % b.int_val,
-                b.float_val == 0 ? NAN : fmod(a.float_val, b.float_val)
-            );
-            break;
-        }
-
-        case GCODE_POWER: {
-            BINARY_NUM_OP(
-                pow(a.int_val, b.int_val) + .5, // Add .5 for correctness
-                pow(a.float_val, b.float_val)
-            );
-            break;
-        }
-
-        case GCODE_MULTIPLY: {
-            BINARY_NUM_OP(
-                a.int_val * b.int_val,
-                a.float_val * b.float_val
-            );
-            break;
-        }
-
-        case GCODE_DIVIDE: {
-            BINARY_NUM_OP(
-                b.int_val == 0 ? NAN : a.int_val / b.int_val,
-                b.float_val == 0 ? NAN : a.float_val / b.float_val
-            );
-            break;
-        }
-
-        case GCODE_LT: {
-            EVAL2;
-            COMPARE;
-            SET_BOOL(cval == -1);
-            break;
-        }
-
-        case GCODE_GT: {
-            EVAL2;
-            COMPARE;
-            SET_BOOL(cval == 1);
-            break;
-        }
-
-        case GCODE_LTE: {
-            EVAL2;
-            COMPARE;
-            SET_BOOL(cval == -1 || cval == 0);
-            break;
-        }
-
-        case GCODE_GTE: {
-            EVAL2;
-            COMPARE;
-            SET_BOOL(cval == 1 || cval == 0);
-            break;
-        }
-
-        case GCODE_NOT: {
-            EVAL1;
-            SET_BOOL(!gcode_bool_cast(&a));
-            break;
-        }
-
-        case GCODE_NEGATE: {
-            EVALN(child, output);
-            switch (force_to_num(output)) {
-                case GCODE_VAL_INT:
-                    output->int_val = -output->int_val;
-                    break;
-
-                case GCODE_VAL_FLOAT:
-                    output->float_val = -output->float_val;
-                    break;
-            }
-            break;
-        }
-
-        case GCODE_IFELSE: {
-            const GCodeNode* test = gcode_next(child);
-            GCodeVal comp;
-            EVALN(test, &comp);
-            if (gcode_bool_cast(&comp)) {
-                EVALN(child, output);
-            } else {
-                EVALN(gcode_next(test), output);
-            }
-            break;
-        }
-
-        case GCODE_LOOKUP: {
-            EVAL2;
-            GCodeVal result;
-            if (!lookup(interp, &a, &b, output))
-                return false;
-            if (result.type == GCODE_VAL_UNKNOWN) {
-                const char* key = gcode_str_cast(interp, &b);
-                if (!key)
-                    return false;
-                ERROR("No such property '%s'", key);
-            }
-            break;
-        }
-
-        default:
-            ERROR("Internal: Unknown operator type %d",
-                  input->operator);
+    case GCODE_AND: {
+        EVAL2;
+        SET_BOOL(gcode_bool_cast(&a) && gcode_bool_cast(&b));
+        break;
     }
-     return true;
+
+    case GCODE_OR: {
+        EVAL2;
+        SET_BOOL(gcode_bool_cast(&a) || gcode_bool_cast(&b));
+        break;
+    }
+
+    case GCODE_EQUALS: {
+        EVAL2;
+        COMPARE;
+        SET_BOOL(cval == 0);
+        break;
+    }
+
+    case GCODE_CONCAT: {
+        EVAL2;
+        const char* s1 = gcode_str_cast(interp, &a);
+        if (!s1)
+            return false;
+        const char* s2 = gcode_str_cast(interp, &b);
+        if (!s2)
+            return false;
+        int l1 = strlen(s1);
+        int l2 = strlen(s2);
+        output->type = GCODE_VAL_STR;
+        char* s = gcode_interp_str_alloc(interp, l1 + l2);
+        if (!s)
+            return false;
+        memcpy(s, s1, l1);
+        memcpy(s + l1, s2, l2);
+        s[l1 + l2] = '\0';
+        output->str_val = s;
+        break;
+    }
+
+    case GCODE_ADD: {
+        BINARY_NUM_OP(
+            a.int_val + b.int_val,
+            a.float_val + b.float_val
+        );
+        break;
+    }
+
+    case GCODE_SUBTRACT: {
+        BINARY_NUM_OP(
+            a.int_val - b.int_val,
+            a.float_val - b.float_val
+        );
+        break;
+    }
+
+    case GCODE_MODULUS: {
+        BINARY_NUM_OP(
+            b.int_val == 0 ? NAN : a.int_val % b.int_val,
+            b.float_val == 0 ? NAN : fmod(a.float_val, b.float_val)
+        );
+        break;
+    }
+
+    case GCODE_POWER: {
+        BINARY_NUM_OP(
+            pow(a.int_val, b.int_val) + .5, // Add .5 for correctness
+            pow(a.float_val, b.float_val)
+        );
+        break;
+    }
+
+    case GCODE_MULTIPLY: {
+        BINARY_NUM_OP(
+            a.int_val * b.int_val,
+            a.float_val * b.float_val
+        );
+        break;
+    }
+
+    case GCODE_DIVIDE: {
+        BINARY_NUM_OP(
+            b.int_val == 0 ? NAN : a.int_val / b.int_val,
+            b.float_val == 0 ? NAN : a.float_val / b.float_val
+        );
+        break;
+    }
+
+    case GCODE_LT: {
+        EVAL2;
+        COMPARE;
+        SET_BOOL(cval == -1);
+        break;
+    }
+
+    case GCODE_GT: {
+        EVAL2;
+        COMPARE;
+        SET_BOOL(cval == 1);
+        break;
+    }
+
+    case GCODE_LTE: {
+        EVAL2;
+        COMPARE;
+        SET_BOOL(cval == -1 || cval == 0);
+        break;
+    }
+
+    case GCODE_GTE: {
+        EVAL2;
+        COMPARE;
+        SET_BOOL(cval == 1 || cval == 0);
+        break;
+    }
+
+    case GCODE_NOT: {
+        EVAL1;
+        SET_BOOL(!gcode_bool_cast(&a));
+        break;
+    }
+
+    case GCODE_NEGATE: {
+        EVALN(child, output);
+        switch (force_to_num(output)) {
+            case GCODE_VAL_INT:
+                output->int_val = -output->int_val;
+                break;
+
+            case GCODE_VAL_FLOAT:
+                output->float_val = -output->float_val;
+                break;
+        }
+        break;
+    }
+
+    case GCODE_IFELSE: {
+        const GCodeNode* test = gcode_next(child);
+        GCodeVal comp;
+        EVALN(test, &comp);
+        if (gcode_bool_cast(&comp)) {
+            EVALN(child, output);
+        } else {
+            EVALN(gcode_next(test), output);
+        }
+        break;
+    }
+
+    case GCODE_LOOKUP: {
+        EVAL2;
+        GCodeVal result;
+        if (!lookup(interp, &a, &b, output))
+            return false;
+        if (result.type == GCODE_VAL_UNKNOWN) {
+            const char* key = gcode_str_cast(interp, &b);
+            if (!key)
+                return false;
+            error(interp, "No such property '%s'", key);
+            return false;
+        }
+        break;
+    }
+
+    default:
+        error(interp, "Internal: Unknown operator type %d", input->operator);
+        return false;
+    }
+    return true;
 }
 
 static bool eval(GCodeInterpreter* interp, const GCodeNode* input,
                  GCodeVal* output)
 {
-
     switch (input->type) {
-        case GCODE_STATEMENT:
-            ERROR("Internal: Unexpected statement in expression");
+    case GCODE_STATEMENT:
+        error(interp, "Internal: Unexpected statement in expression");
+        return false;
 
-        case GCODE_PARAMETER: {
-            const GCodeVal key = {
-                GCODE_VAL_STR,
-                .str_val = ((const GCodeParameterNode*)input)->name
-            };
-            if (!lookup(interp, NULL, &key, output))
-                return false;
-            if (output->type == GCODE_VAL_UNKNOWN)
-                ERROR("Parameter '%s' not defined", key.str_val);
-            break;
+    case GCODE_PARAMETER: {
+        const GCodeVal key = {
+            GCODE_VAL_STR,
+            .str_val = ((const GCodeParameterNode*)input)->name
+        };
+        if (!lookup(interp, NULL, &key, output))
+            return false;
+        if (output->type == GCODE_VAL_UNKNOWN) {
+            error(interp, "Parameter '%s' not defined", key.str_val);
+            return false;
         }
+        break;
+    }
 
-        case GCODE_STR:
-            output->type = GCODE_VAL_STR;
-            output->str_val = ((GCodeStrNode*)input)->value;
-            break;
+    case GCODE_STR:
+        output->type = GCODE_VAL_STR;
+        output->str_val = ((GCodeStrNode*)input)->value;
+        break;
 
-        case GCODE_BOOL:
-            output->type = GCODE_VAL_BOOL;
-            output->bool_val = ((GCodeBoolNode*)input)->value;
-            break;
+    case GCODE_BOOL:
+        output->type = GCODE_VAL_BOOL;
+        output->bool_val = ((GCodeBoolNode*)input)->value;
+        break;
 
-        case GCODE_INT:
-            output->type = GCODE_VAL_INT;
-            output->int_val = ((GCodeIntNode*)input)->value;
-            break;
+    case GCODE_INT:
+        output->type = GCODE_VAL_INT;
+        output->int_val = ((GCodeIntNode*)input)->value;
+        break;
 
-        case GCODE_FLOAT:
-            output->type = GCODE_VAL_FLOAT;
-            output->float_val = ((GCodeFloatNode*)input)->value;
-            break;
+    case GCODE_FLOAT:
+        output->type = GCODE_VAL_FLOAT;
+        output->float_val = ((GCodeFloatNode*)input)->value;
+        break;
 
-        case GCODE_OPERATOR:
-            return eval_operator(interp, (GCodeOperatorNode*)input, output);
+    case GCODE_OPERATOR:
+        return eval_operator(interp, (GCodeOperatorNode*)input, output);
 
-        case GCODE_FUNCTION:
-            // No functions currently
-            ERROR("No such function '%s'", ((GCodeFunctionNode*)input)->name);
-            break;
+    case GCODE_FUNCTION:
+        // No functions currently
+        error(interp, "No such function '%s'",
+              ((GCodeFunctionNode*)input)->name);
+        return false;
 
-        default:
-            ERROR("Internal: Unknown node type %d", input->type);
+    default:
+        error(interp, "Internal: Unknown node type %d", input->type);
+        return false;
     }
     return true;
 }
 
-static bool buffer_field(GCodeInterpreter* interp, const char* text) {
+static inline bool buffer_field(GCodeInterpreter* interp, const char* text) {
     if (interp->field_count == interp->field_limit) {
         size_t new_limit =
-            interp->field_limit ? interp->field_limit * 2 : 0;
+            interp->field_limit ? interp->field_limit * 2 : 16;
         interp->field_buf = realloc(interp->field_buf, new_limit);
         if (!interp->field_buf) {
             interp->field_count = interp->field_limit = 0;
-            ERROR("Out of memory");
+            error(interp, "Out of memory (buffer_field)");
+            return false;
         }
     }
 
@@ -638,26 +660,30 @@ static bool buffer_field(GCodeInterpreter* interp, const char* text) {
     return true;
 }
 
-bool gcode_interp_exec(GCodeInterpreter* interp,
-                       const GCodeStatementNode* statement)
+static inline void exec_statement(GCodeInterpreter* interp,
+                                  const GCodeStatementNode* statement)
 {
     reset(interp);
 
     GCodeVal result;
     for (GCodeNode* n = statement->children; n; n = n->next) {
         if (!eval(interp, n, &result))
-            return false;
+            return;
         const char* str = gcode_str_cast(interp, &result);
         if (!str)
-            return false;
+            return;
         if (!buffer_field(interp, str))
-            return false;
+            return;
     }
 
-    if (!interp->exec(interp->field_buf, interp->field_count))
-        return false;
+    interp->exec(interp->context, interp->field_buf, interp->field_count);
+}
 
-    return true;
+void gcode_interp_exec(GCodeInterpreter* interp,
+                       const GCodeStatementNode* statement)
+{
+    for (const GCodeStatementNode* n = statement; n; n = n->next)
+        exec_statement(interp, n);
 }
 
 void gcode_interp_delete(GCodeInterpreter* interp) {

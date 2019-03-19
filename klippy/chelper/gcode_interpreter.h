@@ -33,7 +33,7 @@ typedef enum gcode_val_type_t {
 
 // Each value produced by the interpreter is encoded using this class.
 typedef struct GCodeVal {
-    gcode_node_type_t type;
+    gcode_val_type_t type;
 
     union {
         dict_handle_t dict_val;
@@ -60,11 +60,11 @@ typedef struct GCodeInterpreter GCodeInterpreter;
 // Returns the new interpreter or NULL on OOM.
 GCodeInterpreter* gcode_interp_new(
     void* context,
-    bool (*error)(void* context, const char* text, ...),
+    bool (*error)(void* context, const char* text),
     bool (*lookup)(void* context, const GCodeVal* key, dict_handle_t parent,
                    GCodeVal* result),
     const char* (*serialize)(void* context, dict_handle_t dict),
-    bool (*exec)(const char** fields, size_t count)
+    bool (*exec)(void* context, const char** fields, size_t count)
 );
 
 // Allocate space on the interpreter string buffer.  No memory management is
@@ -125,14 +125,13 @@ bool gcode_bool_cast(const GCodeVal* val);
 // Returns the double value.  Cannot fail.
 double gcode_float_cast(const GCodeVal* val);
 
-// Pass statements to the G-Code interpreter for execution.
+// Pass statements to the G-Code interpreter for execution.  Error handling
+// occurs entirely via the interpreter error callback.
 //
 // Args:
 //     interp - the interpreter
 //     statement - one or more statements chained via ->next
-//
-// Returns true on success.
-bool gcode_interp_exec(GCodeInterpreter* interp,
+void gcode_interp_exec(GCodeInterpreter* interp,
                        const GCodeStatementNode* statement);
 
 // Release all resources associated with an interpreter.

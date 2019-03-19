@@ -26,7 +26,7 @@ typedef int16_t gcode_keyword_t;
 //     error - callback for fatal errors; lexing stops after invocation
 //     keyword - callback for langauage keywords
 //     identifier - callback for non-keyword tokens
-//     string_literal - callback for string values
+//     str_literal - callback for string values
 //     int_literal - callback for integer values
 //     float_literal - callback for float values
 //
@@ -36,19 +36,20 @@ GCodeLexer* gcode_lexer_new(
     bool (*error)(void* context, const char* format, ...),
     bool (*keyword)(void* context, gcode_keyword_t id),
     bool (*identifier)(void* context, const char* name),
-    bool (*string_literal)(void* context, const char* value),
+    bool (*str_literal)(void* context, const char* value),
     bool (*int_literal)(void* context, int64_t value),
     bool (*float_literal)(void* context, double value)
 );
 
 // Tokenize a string.  Lexical state persists between calls so buffer may
-// terminate anywhere in a statement.
+// terminate anywhere in a statement.  Error handling occurs via the lexer
+// error callback.
 //
 // Args:
 //     lexer - the lexer
 //     buffer - pointer to characters to scan
 //     length - length of the buffer
-bool gcode_lexer_scan(GCodeLexer* lexer, const char* buffer, size_t length);
+void gcode_lexer_scan(GCodeLexer* lexer, const char* buffer, size_t length);
 
 // Reset lexical state.  After the call the lexer may be reused.
 //

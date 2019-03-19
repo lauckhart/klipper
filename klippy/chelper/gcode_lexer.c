@@ -8,6 +8,9 @@
 #include <stdlib.h>
 #include <math.h>
 
+#define ENTER_EXPR '{'
+#define EXIT_EXPR '}'
+
 // These are defined in gcode_parser.keywords.c
 struct GCodeKeywordDetail {
     char *name;
@@ -18,43 +21,45 @@ GCodeKeywordDetail* gcode_keyword_lookup(register const char *str,
                                          register size_t len);
 
 typedef enum state_t {
-    PARSING_NEWLINE,
-    PARSING_ERROR,
-    PARSING_WHITESPACE,
-    PARSING_COMPLETE,
-    PARSING_LINENO,
-    PARSING_WORD,
-    PARSING_COMMENT,
-    PARSING_EXPRESSION,
-    PARSING_AFTER_EXPR,
-    PARSING_SYMBOL,
-    PARSING_IDENTIFIER,
-    PARSING_STRING,
-    PARSING_STRING_ESCAPE,
-    PARSING_STRING_OCTAL,
-    PARSING_STRING_HEX,
-    PARSING_STRING_LOW_UNICODE,
-    PARSING_STRING_HIGH_UNICODE,
-    PARSING_NUMBER_BASE,
-    PARSING_DECIMAL,
-    PARSING_HEX,
-    PARSING_BINARY,
-    PARSING_OCTAL,
-    PARSING_DECIMAL_FLOAT,
-    PARSING_DECIMAL_FRACTION,
-    PARSING_DECIMAL_EXPONENT_SIGN,
-    PARSING_DECIMAL_EXPONENT,
-    PARSING_HEX_FLOAT,
-    PARSING_HEX_FRACTION,
-    PARSING_HEX_EXPONENT_SIGN,
-    PARSING_HEX_EXPONENT
+    SCAN_NEWLINE,
+    SCAN_ERROR,
+    SCAN_COMPLETE,
+    SCAN_LINENO,
+    SCAN_AFTER_LINENO,
+    SCAN_STATEMENT_WHITESPACE,
+    SCAN_WORD,
+    SCAN_COMMENT,
+    SCAN_EMPTY_LINE_COMMENT,
+    SCAN_EXPR_WHITESPACE,
+    SCAN_AFTER_EXPR,
+    SCAN_SYMBOL,
+    SCAN_IDENTIFIER,
+    SCAN_STRING,
+    SCAN_STRING_ESCAPE,
+    SCAN_STRING_OCTAL,
+    SCAN_STRING_HEX,
+    SCAN_STRING_LOW_UNICODE,
+    SCAN_STRING_HIGH_UNICODE,
+    SCAN_NUMBER_BASE,
+    SCAN_DECIMAL,
+    SCAN_HEX,
+    SCAN_BINARY,
+    SCAN_OCTAL,
+    SCAN_DECIMAL_FLOAT,
+    SCAN_DECIMAL_FRACTION,
+    SCAN_DECIMAL_EXPONENT_SIGN,
+    SCAN_DECIMAL_EXPONENT,
+    SCAN_HEX_FLOAT,
+    SCAN_HEX_FRACTION,
+    SCAN_HEX_EXPONENT_SIGN,
+    SCAN_HEX_EXPONENT
 } state_t;
 
 struct GCodeLexer {
     bool (*error)(void*, const char* format, ...);
     bool (*keyword)(void*, gcode_keyword_t id);
     bool (*identifier)(void*, const char* value);
-    bool (*string_literal)(void*, const char* value);
+    bool (*str_literal)(void*, const char* value);
     bool (*int_literal)(void*, int64_t value);
     bool (*float_literal)(void*, double value);
 
@@ -75,13 +80,13 @@ GCodeLexer* gcode_lexer_new(
     bool (*error)(void*, const char* format, ...),
     bool (*keyword)(void*, gcode_keyword_t id),
     bool (*identifier)(void*, const char* value),
-    bool (*string_literal)(void*, const char* value),
+    bool (*str_literal)(void*, const char* value),
     bool (*int_literal)(void*, int64_t value),
     bool (*float_literal)(void*, double value)
 ) {
     GCodeLexer* lexer = malloc(sizeof(GCodeLexer));
     if (!lexer) {
-        error(context, "Out of memory");
+        error(context, "Out of memory (gcode_lexer_new)");
         return NULL;
     }
 
@@ -90,7 +95,7 @@ GCodeLexer* gcode_lexer_new(
     lexer->error = error;
     lexer->keyword = keyword;
     lexer->identifier = identifier;
-    lexer->string_literal = string_literal;
+    lexer->str_literal = str_literal;
     lexer->int_literal = int_literal;
     lexer->float_literal = float_literal;
     lexer->expr_nesting = 0;
@@ -103,18 +108,19 @@ GCodeLexer* gcode_lexer_new(
 
 static bool gcode_token_alloc(GCodeLexer* lexer) {
     if (lexer->token_str == NULL) {
-        lexer->token_str = malloc(128);
+        lexer->token_limit = 128;
+        lexer->token_str = malloc(lexer->token_limit);
         if (!lexer->token_str) {
-            lexer->error(lexer->context, "Out of memory");
-            lexer->state = PARSING_ERROR;
+            lexer->error(lexer->context, "Out of memory (gcode_token_alloc)");
+            lexer->state = SCAN_ERROR;
             return false;
         }
     } else {
-        lexer->token_length *= 2;
-        lexer->token_str = realloc(lexer->token_str, lexer->token_length);
+        lexer->token_limit *= 2;
+        lexer->token_str = realloc(lexer->token_str, lexer->token_limit);
         if (!lexer->token_str) {
-            lexer->error(lexer->context, "Out of memory");
-            lexer->state = PARSING_ERROR;
+            lexer->error(lexer->context, "Out of memory (gcode_token_alloc)");
+            lexer->state = SCAN_ERROR;
             return false;
         }
     }
@@ -139,7 +145,7 @@ static inline bool add_str_wchar(GCodeLexer* lexer) {
     return true;
 }
 
-static inline bool complete_token(GCodeLexer* lexer) {
+static inline bool terminate_token(GCodeLexer* lexer) {
     return token_char(lexer, '\0');
 }
 
@@ -183,38 +189,63 @@ static inline bool is_ident_char(char ch) {
 
 #define ERROR(args...) { \
     lexer->error(lexer->context, args); \
-    lexer->state = PARSING_ERROR; \
+    lexer->state = SCAN_ERROR; \
 }
 
-static inline bool emit_symbol(GCodeLexer* lexer) {
+static inline int get_keyword_id(GCodeLexer* lexer) {
     GCodeKeywordDetail* detail = gcode_keyword_lookup(lexer->token_str,
-                                                    lexer->token_length);
-    if (detail) {
-        if (!lexer->keyword(lexer->context, detail->id)) {
-            lexer->state = PARSING_ERROR;
-            return false;
-        }
-        return true;
+                                                      lexer->token_length - 1);
+    if (detail)
+        return detail->id;
+    return -1;
+}
+
+static inline bool free_token(GCodeLexer* lexer) {
+    lexer->token_length = 0;
+}
+
+#define GET_KEYWORD_ID \
+    if (!terminate_token(lexer)) { \
+        free_token(lexer); \
+        return false; \
+    } \
+    int id = get_keyword_id(lexer);
+
+static inline bool emit_symbol(GCodeLexer* lexer) {
+    GET_KEYWORD_ID;
+
+    if (id == -1) {
+        ERROR("Illegal operator '%s'", lexer->token_str);
+        free_token(lexer);
+        return false;
+    }
+    free_token(lexer);
+
+    if (!lexer->keyword(lexer->context, id)) {
+        lexer->state = SCAN_ERROR;
+        return false;
     }
 
-    if (complete_token(lexer))
-        ERROR("Illegal operator '%s'", lexer->token_str);
-
-    return false;
+    return true;
 }
 
 static inline bool emit_char_symbol(GCodeLexer* lexer, char ch) {
-    GCodeKeywordDetail* detail = gcode_keyword_lookup(&ch, 1);
+    token_char(lexer, ch);
+    GET_KEYWORD_ID;
+    free_token(lexer);
 
-    if (!detail) {
+    if (id == -1) {
         ERROR("Internal: Attempt to emit unknown symbol '%c'", ch);
         return false;
     }
 
-    if (!lexer->keyword(lexer->context, detail->id)) {
-        lexer->state = PARSING_ERROR;
+    if (!lexer->keyword(lexer->context, id)) {
+        lexer->state = SCAN_ERROR;
         return false;
     }
+
+    if (ch == '\n')
+        lexer->state = SCAN_NEWLINE;
 
     return true;
 }
@@ -222,18 +253,22 @@ static inline bool emit_char_symbol(GCodeLexer* lexer, char ch) {
 #define EMIT_CHAR_SYMBOL() emit_char_symbol(lexer, ch)
 
 static inline bool emit_str(GCodeLexer* lexer) {
-    if (!complete_token(lexer)) {
-        lexer->state = PARSING_ERROR;
-        lexer->token_length = 0;
+    if (!terminate_token(lexer)) {
+        free_token(lexer);
         return false;
     }
-    lexer->token_length = 0;
+    if (!lexer->str_literal(lexer->context, lexer->token_str)) {
+        lexer->state = SCAN_ERROR;
+        free_token(lexer);
+        return false;
+    }
+    free_token(lexer);
     return true;
 }
 
 static inline bool emit_int(GCodeLexer* lexer, int value) {
     if (!lexer->int_literal(lexer->context, value)) {
-        lexer->state = PARSING_ERROR;
+        lexer->state = SCAN_ERROR;
         return false;
     }
     return true;
@@ -243,7 +278,7 @@ static inline bool emit_int(GCodeLexer* lexer, int value) {
 
 static inline bool emit_float(GCodeLexer* lexer, int value) {
     if (!lexer->float_literal(lexer->context, value)) {
-        lexer->state = PARSING_ERROR;
+        lexer->state = SCAN_ERROR;
         return false;
     }
     return true;
@@ -252,15 +287,15 @@ static inline bool emit_float(GCodeLexer* lexer, int value) {
 #define EMIT_FLOAT() emit_float(lexer, lexer->float_value)
 
 static inline bool emit_keyword_or_identifier(GCodeLexer* lexer) {
-    GCodeKeywordDetail* detail = gcode_keyword_lookup(lexer->token_str,
-                                                    lexer->token_length);
-    bool result;
-    if (detail)
-        result = lexer->keyword(lexer, detail->id);
-    else
-        result = lexer->identifier(lexer, lexer->token_str);
+    GET_KEYWORD_ID;
 
-    lexer->token_length = 0;
+    bool result;
+    if (id == -1)
+        result = lexer->identifier(lexer, lexer->token_str);
+    else
+        result = lexer->keyword(lexer, id);
+
+    free_token(lexer);
     return result;
 }
 
@@ -274,6 +309,7 @@ bool add_digit(GCodeLexer* lexer, uint8_t value, uint8_t base, int64_t max,
 {
     if (DIGIT_EXCEEDS(value, base, max)) {
         ERROR(err);
+        free_token(lexer);
         return false;
     }
     add_safe_digit(lexer, value, base);
@@ -285,12 +321,12 @@ bool add_digit(GCodeLexer* lexer, uint8_t value, uint8_t base, int64_t max,
 #define TOKEN_CHAR_UPPER() \
     TOKEN_CHAR(ch >= 'a' && ch <= 'z' ? ch - 32 : ch)
 
-#define CASE_SPACE case ' ': case '\t': case '\v': case '\r'
+#define CASE_SPACE case ' ': case '\t': case '\v': case '\r':
 #define BACK_UP buffer--;
 #define CASE_STR_ESC(esc_ch, ch) \
     case esc_ch: \
         if (TOKEN_CHAR(ch)) \
-            lexer->state = PARSING_STRING; \
+            lexer->state = SCAN_STRING; \
         break;
 
 static const int UNICODE_MAX = 0x10ffff;
@@ -298,645 +334,680 @@ static const int UNICODE_MAX = 0x10ffff;
 // Get ready for monster switch statement.  Two reasons for this:
 //   - Performance (no function call overhead)
 //   - Incremental scanning (buffer may terminate anywhere in a statement)
-bool gcode_lexer_scan(GCodeLexer* lexer, const char* buffer,
-                      size_t length)
-{
+void gcode_lexer_scan(GCodeLexer* lexer, const char* buffer, size_t length) {
     const char* end = buffer + length;
     int8_t digit_value;
-    for (char ch = *buffer; buffer < end; buffer++)
+    for (char ch = *buffer; buffer < end; ch = (*++buffer))
         switch (lexer->state) {
-            case PARSING_NEWLINE:
-                switch (ch) {
-                    case 'N':
-                        lexer->state = PARSING_LINENO;
-                        break;
+        case SCAN_NEWLINE:
+            switch (ch) {
+                case 'N':
+                case 'n':
+                    lexer->state = SCAN_LINENO;
+                    break;
 
-                    default:
-                        BACK_UP;
-                        lexer->state = PARSING_WHITESPACE;
-                        break;
-                }
-                break;
+                case ';':
+                    lexer->state = SCAN_EMPTY_LINE_COMMENT;
+                    break;
 
-            case PARSING_ERROR:
-                if (ch == '\n') {
+                case '\n':
+                CASE_SPACE
+                    break;
+
+                default:
+                    BACK_UP;
+                    lexer->state = SCAN_STATEMENT_WHITESPACE;
+                    break;
+            }
+            break;
+
+        case SCAN_ERROR:
+            if (ch == '\n')
+                EMIT_CHAR_SYMBOL();
+            else if (ch == '\0')
+                lexer->state = SCAN_COMPLETE;
+            break;
+
+        case SCAN_COMPLETE:
+            return;
+
+        case SCAN_LINENO:
+            switch (ch) {
+                case '\n':
+                    lexer->state = SCAN_NEWLINE;
+                    break;
+
+                CASE_SPACE
+                    lexer->state = SCAN_AFTER_LINENO;
+                    break;
+
+                case ';':
+                    lexer->state = SCAN_EMPTY_LINE_COMMENT;
+                    break;
+
+                case ENTER_EXPR:
                     if (EMIT_CHAR_SYMBOL())
-                        lexer->state = PARSING_NEWLINE;
-                } else if (ch == '\0')
-                    lexer->state = PARSING_COMPLETE;
-                break;
+                        lexer->state = SCAN_EXPR_WHITESPACE;
+                    break;
+            }
+            break;
 
-            case PARSING_WHITESPACE:
-                switch (ch) {
-                    case '(':
-                        if (EMIT_CHAR_SYMBOL())
-                            lexer->state = PARSING_EXPRESSION;
-                        break;
+        case SCAN_AFTER_LINENO:
+            switch (ch) {
+                case '\n':
+                CASE_SPACE
+                    break;
 
-                    case '\n':
-                        EMIT_CHAR_SYMBOL();
-                        lexer->state = PARSING_NEWLINE;
-                        break;
+                case ';':
+                    lexer->state = SCAN_EMPTY_LINE_COMMENT;
+                    break;
 
-                    case ';':
-                        lexer->state = PARSING_COMMENT;
-                        break;
+                default:
+                    BACK_UP;
+                    lexer->state = SCAN_STATEMENT_WHITESPACE;
+                    break;
+            }
+            break;
+            
+        case SCAN_STATEMENT_WHITESPACE:
+            switch (ch) {
+                case ENTER_EXPR:
+                    if (EMIT_CHAR_SYMBOL())
+                        lexer->state = SCAN_EXPR_WHITESPACE;
+                    break;
 
-                    CASE_SPACE:
-                        break;
-
-                    case '\0':
-                        lexer->state = PARSING_COMPLETE;
-                        return true;
-
-                    default:
-                        lexer->state = PARSING_WORD;
-                        break;
-                }
-                break;
-
-            case PARSING_COMPLETE:
-                return false;
-
-            case PARSING_LINENO:
-                switch (ch) {
-                    case '\n':
-                        EMIT_CHAR_SYMBOL();
-                        lexer->state = PARSING_NEWLINE;
-                        break;
-
-                    CASE_SPACE:
-                        lexer->state = PARSING_WHITESPACE;
-                        break;
-
-                    case ';':
-                        lexer->state = PARSING_COMMENT;
-                        break;
-
-                    case '(':
-                        if (EMIT_CHAR_SYMBOL())
-                            lexer->state = PARSING_EXPRESSION;
-                        break;
-                }
-                break;
-
-            case PARSING_WORD:
-                switch (ch) {
-                    case '\n':
-                        emit_str(lexer);
-                        lexer->state = PARSING_NEWLINE;
-                        break;
-
-                    CASE_SPACE:
-                        if (emit_str(lexer))
-                            lexer->state = PARSING_WHITESPACE;
-                        break;
-
-                    case ';':
-                        if (emit_str(lexer))
-                            lexer->state = PARSING_COMMENT;
-                        break;
-
-                    case '(':
-                        if (emit_str(lexer) && EMIT_BRIDGE()
-                            && EMIT_CHAR_SYMBOL()
-                        )
-                            lexer->state = PARSING_EXPRESSION;
-                        break;
-
-                    default:
-                        TOKEN_CHAR_UPPER();
-                        break;
-                }
-                break;
-
-            case PARSING_COMMENT:
-                if (ch == '\n') {
+                case '\n':
                     EMIT_CHAR_SYMBOL();
-                    lexer->state = PARSING_NEWLINE;
-                }
-                break;
+                    break;
 
-            case PARSING_EXPRESSION:
-                switch (ch) {
-                    case '\n':
-                        ERROR(lexer->context, "Unterminated expression");
-                        lexer->state = PARSING_NEWLINE;
-                        break;
+                case ';':
+                    lexer->state = SCAN_COMMENT;
+                    break;
 
-                    CASE_SPACE:
-                        break;
+                CASE_SPACE
+                    break;
 
-                    case '(':
-                        if (EMIT_CHAR_SYMBOL())
-                            lexer->expr_nesting++;
-                        break;
+                case '\0':
+                    lexer->state = SCAN_COMPLETE;
+                    return;
 
-                    case ')':
-                        if (EMIT_CHAR_SYMBOL())
-                            if (lexer->expr_nesting)
-                                lexer->expr_nesting--;
-                            else
-                                lexer->state = PARSING_AFTER_EXPR;
+                default:
+                    lexer->state = SCAN_WORD;
+                    BACK_UP;
+                    break;
+            }
+            break;
+
+        case SCAN_WORD:
+            switch (ch) {
+                case '\n':
+                    emit_str(lexer);
+                    EMIT_CHAR_SYMBOL();
+                    break;
+
+                CASE_SPACE
+                    if (emit_str(lexer))
+                        lexer->state = SCAN_STATEMENT_WHITESPACE;
+                    break;
+
+                case ';':
+                    if (emit_str(lexer))
+                        lexer->state = SCAN_COMMENT;
+                    break;
+
+                case ENTER_EXPR:
+                    if (emit_str(lexer) && EMIT_BRIDGE()
+                        && EMIT_CHAR_SYMBOL()
+                    )
+                        lexer->state = SCAN_EXPR_WHITESPACE;
+                    break;
+
+                default:
+                    TOKEN_CHAR_UPPER();
+                    break;
+            }
+            break;
+
+        case SCAN_COMMENT:
+            if (ch == '\n')
+                EMIT_CHAR_SYMBOL();
+            break;
+
+        case SCAN_EMPTY_LINE_COMMENT:
+            if (ch == '\n')
+                lexer->state = SCAN_NEWLINE;
+            break;
+
+        case SCAN_EXPR_WHITESPACE:
+            switch (ch) {
+                case '\n':
+                    ERROR(lexer->context, "Unterminated expression");
+                    lexer->state = SCAN_NEWLINE;
+                    break;
+
+                CASE_SPACE
+                    break;
+
+                case ENTER_EXPR:
+                    if (EMIT_CHAR_SYMBOL())
+                        lexer->expr_nesting++;
+                    break;
+
+                case EXIT_EXPR:
+                    if (EMIT_CHAR_SYMBOL())
+                        if (lexer->expr_nesting)
+                            lexer->expr_nesting--;
                         else
-                            lexer->expr_nesting = 0;
-                        break;
+                            lexer->state = SCAN_AFTER_EXPR;
+                    else
+                        lexer->expr_nesting = 0;
+                    break;
 
-                    case '0':
-                        lexer->state = PARSING_NUMBER_BASE;
-                        break;
+                case '0':
+                    lexer->state = SCAN_NUMBER_BASE;
+                    break;
 
-                    default:
-                        if (ch >= '1' && ch <= '9')
-                            lexer->state = PARSING_DECIMAL;
-                        else if (is_ident_char(ch))
-                            lexer->state = PARSING_IDENTIFIER;
-                        else
-                            lexer->state = PARSING_SYMBOL;
-                        BACK_UP;
-                        break;
+                default:
+                    if (ch >= '1' && ch <= '9')
+                        lexer->state = SCAN_DECIMAL;
+                    else if (is_ident_char(ch))
+                        lexer->state = SCAN_IDENTIFIER;
+                    else
+                        lexer->state = SCAN_SYMBOL;
+                    BACK_UP;
+                    break;
+            }
+            break;
+
+        case SCAN_AFTER_EXPR:
+            switch (ch) {
+                case '\0':
+                case '\n':
+                case ';':
+                CASE_SPACE
+                    lexer->state = SCAN_STATEMENT_WHITESPACE;
+                    break;
+
+                default:
+                    EMIT_BRIDGE();
+                    break;
+            }
+            BACK_UP;
+            break;
+
+        case SCAN_SYMBOL:
+            if (is_ident_char(ch)
+                || ch == ' '
+                || ch == '\t'
+                || ch == '\v'
+                || ch == '\r'
+                || ch == '\n'
+            ) {
+                if (!emit_symbol(lexer))
+                    break;
+                if (ch == '\n') {
+                    ERROR("Unterminated expression");
+                    lexer->state = SCAN_NEWLINE;
+                } else {
+                    lexer->state = SCAN_EXPR_WHITESPACE;
+                    BACK_UP;
                 }
-                break;
+            }
+            break;
 
-            case PARSING_AFTER_EXPR:
-                switch (ch) {
-                    case '\0':
-                    case '\n':
-                    case ';':
-                    CASE_SPACE:
-                        break;
+        case SCAN_IDENTIFIER:
+            if (is_ident_char(ch))
+                TOKEN_CHAR_UPPER();
+            else {
+                if (!emit_keyword_or_identifier(lexer))
+                    break;
+                lexer->state = SCAN_EXPR_WHITESPACE;
+                BACK_UP;
+            }
+            break;
 
-                    default:
-                        EMIT_BRIDGE();
-                        break;
-                }
+        case SCAN_STRING:
+            switch (ch) {
+                case '\\':
+                    lexer->state = SCAN_STRING_ESCAPE;
+                    break;
+
+                case '"':
+                    if (emit_str(lexer))
+                        lexer->state = SCAN_EXPR_WHITESPACE;
+                    break;
+
+                case '\n':
+                    ERROR("Unterminated string");
+                    free_token(lexer);
+                    lexer->state = SCAN_NEWLINE;
+                    break;
+
+                default:
+                    TOKEN_CHAR(ch);
+                    break;
+            }
+            break;
+
+        case SCAN_STRING_ESCAPE:
+            switch (ch) {
+            CASE_STR_ESC('a', 0x07);
+            CASE_STR_ESC('b', 0x08);
+            CASE_STR_ESC('e', 0x1b);
+            CASE_STR_ESC('f', 0x0c);
+            CASE_STR_ESC('n', 0x0a);
+            CASE_STR_ESC('r', 0x0d);
+            CASE_STR_ESC('t', 0x09);
+            CASE_STR_ESC('v', 0x0b);
+            CASE_STR_ESC('\\', 0x5c);
+            CASE_STR_ESC('\'', 0x27);
+            CASE_STR_ESC('"', 0x22);
+            CASE_STR_ESC('?', 0x3f);
+
+            case 'x':
+                lexer->int_value = 0;
+                lexer->digit_count = 0;
+                lexer->state = SCAN_STRING_HEX;
                 BACK_UP;
                 break;
 
-            case PARSING_SYMBOL:
-                if (is_ident_char(ch)
-                    || ch == ' '
-                    || ch == '\t'
-                    || ch == '\v'
-                    || ch == '\r'
-                    || ch == '\n'
-                ) {
-                    if (!emit_symbol(lexer))
-                        break;
-                    if (ch == '\n') {
-                        ERROR("Unterminated expression");
-                        lexer->state = PARSING_NEWLINE;
-                    } else {
-                        lexer->state = PARSING_EXPRESSION;
-                        BACK_UP;
-                    }
-                }
-                break;
-
-            case PARSING_IDENTIFIER:
-                if (is_ident_char(ch))
-                    TOKEN_CHAR_UPPER();
-                else {
-                    if (!emit_keyword_or_identifier(lexer))
-                        break;
-                    lexer->state = PARSING_EXPRESSION;
-                    BACK_UP;
-                }
-                break;
-
-            case PARSING_STRING:
-                switch (ch) {
-                    case '\\':
-                        lexer->state = PARSING_STRING_ESCAPE;
-                        break;
-
-                    case '"':
-                        if (emit_str(lexer))
-                            lexer->state = PARSING_EXPRESSION;
-                        break;
-
-                    case '\n':
-                        ERROR("Unterminated string");
-                        lexer->state = PARSING_NEWLINE;
-                        break;
-
-                    default:
-                        TOKEN_CHAR(ch);
-                        break;
-                }
-                break;
-
-            case PARSING_STRING_ESCAPE:
-                switch (ch) {
-                    CASE_STR_ESC('a', 0x07);
-                    CASE_STR_ESC('b', 0x08);
-                    CASE_STR_ESC('e', 0x1b);
-                    CASE_STR_ESC('f', 0x0c);
-                    CASE_STR_ESC('n', 0x0a);
-                    CASE_STR_ESC('r', 0x0d);
-                    CASE_STR_ESC('t', 0x09);
-                    CASE_STR_ESC('v', 0x0b);
-                    CASE_STR_ESC('\\', 0x5c);
-                    CASE_STR_ESC('\'', 0x27);
-                    CASE_STR_ESC('"', 0x22);
-                    CASE_STR_ESC('?', 0x3f);
-
-                    case 'x':
-                        lexer->int_value = 0;
-                        lexer->digit_count = 0;
-                        lexer->state = PARSING_STRING_HEX;
-                        BACK_UP;
-                        break;
-
-                    case 'u':
-                        lexer->int_value = 0;
-                        lexer->digit_count = 0;
-                        lexer->state = PARSING_STRING_LOW_UNICODE;
-                        BACK_UP;
-                        break;
-
-                    case 'U':
-                        lexer->int_value = 0;
-                        lexer->digit_count = 0;
-                        lexer->state = PARSING_STRING_HIGH_UNICODE;
-                        BACK_UP;
-                        break;
-
-                    case '\n':
-                        ERROR("Unterminated string");
-                        lexer->state = PARSING_NEWLINE;
-                        break;
-
-                    default:
-                        if (ch >= 0 && ch <= 9) {
-                            lexer->int_value = 0;
-                            lexer->digit_count = 0;
-                            lexer->state = PARSING_STRING_OCTAL;
-                            BACK_UP;
-                        } else
-                            ERROR("Illegal string escape \\%c", ch);
-                        break;
-                }
-                break;
-
-            case PARSING_STRING_OCTAL:
-                if (ch >= '0' && ch <= '7') {
-                    if (add_digit(lexer, ch - '0', 8, 255,
-                                  "Octal escape (\\nnn) exceeds byte value")
-                        && lexer->digit_count == 3 &&
-                        TOKEN_CHAR(lexer->int_value)
-                    )
-                        lexer->state = PARSING_EXPRESSION;
-                } else if (ch == '8' || ch == '9') {
-                    ERROR("Illegal digit in octal escape (\\nnn)");
-                } else {
-                    if (TOKEN_CHAR(lexer->int_value))
-                        lexer->state = PARSING_STRING;
-                    BACK_UP;
-                }
-                break;
-
-            case PARSING_STRING_HEX:
-                digit_value = hex_digit_to_int(ch);
-                if (digit_value == -1) {
-                    if (!lexer->digit_count) {
-                        ERROR("Hex string escape (\\x) requires at least one "
-                              "digit");
-                        break;
-                    }
-                    if (TOKEN_CHAR(lexer->int_value))
-                        lexer->state = PARSING_STRING;
-                    BACK_UP;
-                }
-                add_digit(lexer, digit_value, 16, 255,
-                          "Hex escape exceeds byte value");
-                break;
-
-            case PARSING_STRING_LOW_UNICODE:
-                digit_value = hex_digit_to_int(ch);
-                if (digit_value == -1) {
-                    ERROR("Low unicode escape (\\u) requires exactly four "
-                          "digits");
-                    break;
-                }
-                add_safe_digit(lexer, digit_value, 16);
-                if (lexer->digit_count == 4
-                    && add_str_wchar(lexer)
-                )
-                    lexer->state = PARSING_STRING;
-                break;
-
-            case PARSING_STRING_HIGH_UNICODE:
-                digit_value = hex_digit_to_int(ch);
-                if (digit_value == -1) {
-                    ERROR("High unicode escape (\\U) requires exactly eight "
-                          "digits");
-                    break;
-                }
-                if (add_digit(lexer, digit_value, 16, UNICODE_MAX,
-                          "High unicode escape (\\U) exceeds unicode value")
-                    && lexer->digit_count == 8
-                    && add_str_wchar(lexer)
-                )
-                    lexer->state = PARSING_STRING;
-                break;
-
-            case PARSING_NUMBER_BASE:
-                switch (ch) {
-                    case 'b':
-                    case 'B':
-                        lexer->int_value = 0;
-                        lexer->state = PARSING_BINARY;
-                        break;
-
-                    case 'x':
-                    case 'X':
-                        lexer->int_value = 0;
-                        lexer->state = PARSING_HEX;
-                        break;
-
-                    default:
-                        if (ch >= 0 && ch <= 9) {
-                            lexer->int_value = 0;
-                            lexer->state = PARSING_OCTAL;
-                            BACK_UP;
-                        } else {
-                            if (emit_int(lexer, 0))
-                                lexer->state = PARSING_EXPRESSION;
-                            BACK_UP;
-                        }
-                        break;
-                }
-                break;
-
-            case PARSING_DECIMAL:
-                switch (ch) {
-                    case '.':
-                        lexer->float_value = lexer->int_value;
-                        lexer->state = PARSING_DECIMAL_FRACTION;
-                        lexer->digit_count = 0;
-                        break;
-
-                    case 'e':
-                    case 'E':
-                        lexer->float_value = lexer->int_value;
-                        lexer->state = PARSING_DECIMAL_EXPONENT_SIGN;
-                        break;
-
-                    default:
-                        if (ch >= '0' && ch <= '9') {
-                            if (DIGIT_EXCEEDS(ch - '0', INT64_MAX, 10)) {
-                                lexer->float_value = lexer->int_value;
-                                lexer->state = PARSING_DECIMAL_FLOAT;
-                            } else
-                                add_safe_digit(lexer, ch - '0', 10);
-                        } else {
-                            if (emit_int(lexer, lexer->int_value))
-                                lexer->state = PARSING_EXPRESSION;
-                            BACK_UP;
-                        }
-                        break;
-                }
-                break;
-
-            case PARSING_HEX:
-                switch (ch) {
-                    case '.':
-                        lexer->float_value = lexer->int_value;
-                        lexer->state = PARSING_HEX_FRACTION;
-                        lexer->digit_count = 0;
-                        break;
-
-                    case 'p':
-                    case 'P':
-                        lexer->float_value = lexer->int_value;
-                        lexer->state = PARSING_HEX_EXPONENT_SIGN;
-                        break;
-
-                    default:
-                        digit_value = hex_digit_to_int(ch);
-                        if (digit_value != -1) {
-                            if (DIGIT_EXCEEDS(digit_value, INT64_MAX, 16)) {
-                                lexer->float_value = lexer->int_value;
-                                lexer->state = PARSING_HEX_FLOAT;
-                            } else
-                                add_safe_digit(lexer, digit_value, 10);
-                        } else {
-                            if (EMIT_INT())
-                                lexer->state = PARSING_EXPRESSION;
-                            BACK_UP;
-                        }
-                        break;
-                }
-                break;
-
-            case PARSING_BINARY:
-                if (ch == '0' || ch == '1') {
-                    add_digit(lexer, ch - '0', 2, INT64_MAX,
-                        "Binary literal exceeds maximum value");
-                } else if (ch == '.') {
-                    ERROR("Fractional binary literals not allowed");
-                } else if (ch >= '2' && ch <= '9') {
-                    ERROR("Illegal binary digit %c", ch);
-                } else {
-                    if (EMIT_INT())
-                        lexer->state = PARSING_EXPRESSION;
-                    BACK_UP;
-                }
-                break;
-
-            case PARSING_OCTAL:
-                if (ch >= '0' && ch <= '7') {
-                    add_digit(lexer, ch - '0', 2, INT64_MAX,
-                        "Octal literal exceeds maximum value");
-                } else if (ch == '.') {
-                    ERROR("Fractional octal literals not allowed");
-                } else if (ch == '8' || ch == '9') {
-                    ERROR("Illegal octal digit %c", ch);
-                } else {
-                    if (EMIT_INT())
-                        lexer->state = PARSING_EXPRESSION;
-                    BACK_UP;
-                }
-                break;
-
-            case PARSING_DECIMAL_FLOAT:
-                switch (ch) {
-                    case '.':
-                        lexer->state = PARSING_DECIMAL_FRACTION;
-                        lexer->digit_count = 0;
-                        break;
-
-                    case 'e':
-                    case 'E':
-                        lexer->state = PARSING_DECIMAL_EXPONENT_SIGN;
-                        break;
-
-                    default:
-                        if (ch >= '0' && ch <= '9')
-                            add_float_digit(lexer, ch - '0', 10);
-                        else {
-                            if (EMIT_FLOAT())
-                                lexer->state = PARSING_EXPRESSION;
-                            BACK_UP;
-                        }
-                        break;
-                }
-                break;
-
-            case PARSING_DECIMAL_FRACTION:
-                switch (ch) {
-                    case 'e':
-                    case 'E':
-                        lexer->state = PARSING_DECIMAL_EXPONENT_SIGN;
-                        break;
-
-                    default:
-                        if (ch >= '0' && ch <= '9')
-                            add_float_fraction_digit(lexer, ch - '0', 10);
-                        else {
-                            if (EMIT_FLOAT())
-                                lexer->state = PARSING_EXPRESSION;
-                            BACK_UP;
-                        }
-                        break;
-                }
-                break;
-
-            case PARSING_DECIMAL_EXPONENT_SIGN:
-                if (ch == '-')
-                    lexer->exponent_sign = -1;
-                else {
-                    lexer->exponent_sign = 1;
-                    BACK_UP;
-                }
+            case 'u':
                 lexer->int_value = 0;
                 lexer->digit_count = 0;
-                lexer->state = PARSING_DECIMAL_EXPONENT;
+                lexer->state = SCAN_STRING_LOW_UNICODE;
+                BACK_UP;
                 break;
 
-            case PARSING_DECIMAL_EXPONENT:
-                if (ch >= '0' && ch <= '9') {
-                    if (lexer->digit_count == 3) {
-                        ERROR("Decimal exponent must be 3 digits or less");
-                    } else
-                        add_safe_digit(lexer, ch - '0', 10);
-                } else if (!lexer->digit_count) {
-                    ERROR("No digits after decimal exponent delimiter");
-                } else {
-                    lexer->float_value *= powf(10, lexer->int_value);
-                    EMIT_FLOAT();
-                    BACK_UP;
-                }
-                break;
-
-            case PARSING_HEX_FLOAT:
-                switch (ch) {
-                    case '.':
-                        lexer->state = PARSING_HEX_FRACTION;
-                        lexer->digit_count = 0;
-                        break;
-
-                    case 'p':
-                    case 'P':
-                        lexer->state = PARSING_HEX_EXPONENT_SIGN;
-                        break;
-
-                    default:
-                        digit_value = hex_digit_to_int(ch);
-                        if (digit_value != -1)
-                            add_float_digit(lexer, digit_value, 16);
-                        else {
-                            if (EMIT_FLOAT())
-                                lexer->state = PARSING_EXPRESSION;
-                            BACK_UP;
-                        }
-                        break;
-                }
-                break;
-
-            case PARSING_HEX_FRACTION:
-                switch (ch) {
-                    case 'p':
-                    case 'P':
-                        lexer->state = PARSING_HEX_EXPONENT_SIGN;
-                        break;
-
-                    default:
-                        digit_value = hex_digit_to_int(ch);
-                        if (digit_value  != -1)
-                            add_float_fraction_digit(lexer, digit_value, 16);
-                        else {
-                            if (EMIT_FLOAT())
-                                lexer->state = PARSING_EXPRESSION;
-                            BACK_UP;
-                        }
-                        break;
-                }
-                break;
-
-            case PARSING_HEX_EXPONENT_SIGN:
-                if (ch == '-')
-                    lexer->exponent_sign = -1;
-                else {
-                    lexer->exponent_sign = 1;
-                    BACK_UP;
-                }
+            case 'U':
                 lexer->int_value = 0;
                 lexer->digit_count = 0;
-                lexer->state = PARSING_HEX_EXPONENT;
+                lexer->state = SCAN_STRING_HIGH_UNICODE;
+                BACK_UP;
                 break;
 
-            case PARSING_HEX_EXPONENT:
-                digit_value = hex_digit_to_int(ch);
-                if (digit_value != -1) {
-                    if (lexer->digit_count == 2) {
-                        ERROR("Hex exponent must be 2 digits or less");
-                    } else
-                        add_safe_digit(lexer, digit_value, 16);
-                } else if (!lexer->digit_count) {
-                    ERROR("No digits after hex exponent delimiter");
-                } else {
-                    lexer->float_value *= powf(16, lexer->int_value);
-                    EMIT_FLOAT();
-                    BACK_UP;
-                }
+            case '\n':
+                ERROR("Unterminated string");
+                free_token(lexer);
+                lexer->state = SCAN_NEWLINE;
                 break;
 
             default:
-                ERROR("Internal: Unknown lexer state %d", lexer->state);
+                if (ch >= 0 && ch <= 9) {
+                    lexer->int_value = 0;
+                    lexer->digit_count = 0;
+                    lexer->state = SCAN_STRING_OCTAL;
+                    BACK_UP;
+                } else {
+                    ERROR("Illegal string escape \\%c", ch);
+                    free_token(lexer);
+                }
                 break;
+            }
+            break;
+
+        case SCAN_STRING_OCTAL:
+            if (ch >= '0' && ch <= '7') {
+                if (add_digit(lexer, ch - '0', 8, 255,
+                              "Octal escape (\\nnn) exceeds byte value")
+                    && lexer->digit_count == 3
+                    && TOKEN_CHAR(lexer->int_value)
+                )
+                    lexer->state = SCAN_EXPR_WHITESPACE;
+            } else if (ch == '8' || ch == '9') {
+                ERROR("Illegal digit in octal escape (\\nnn)");
+                free_token(lexer);
+            } else {
+                if (TOKEN_CHAR(lexer->int_value))
+                    lexer->state = SCAN_STRING;
+                BACK_UP;
+            }
+            break;
+
+        case SCAN_STRING_HEX:
+            digit_value = hex_digit_to_int(ch);
+            if (digit_value == -1) {
+                if (!lexer->digit_count) {
+                    ERROR("Hex string escape (\\x) requires at least one "
+                          "digit");
+                    free_token(lexer);
+                    break;
+                }
+                if (TOKEN_CHAR(lexer->int_value))
+                    lexer->state = SCAN_STRING;
+                BACK_UP;
+            }
+            add_digit(lexer, digit_value, 16, 255,
+                      "Hex escape exceeds byte value");
+            break;
+
+        case SCAN_STRING_LOW_UNICODE:
+            digit_value = hex_digit_to_int(ch);
+            if (digit_value == -1) {
+                ERROR("Low unicode escape (\\u) requires exactly four "
+                      "digits");
+                free_token(lexer);
+                break;
+            }
+            add_safe_digit(lexer, digit_value, 16);
+            if (lexer->digit_count == 4
+                && add_str_wchar(lexer)
+            )
+                lexer->state = SCAN_STRING;
+            break;
+
+        case SCAN_STRING_HIGH_UNICODE:
+            digit_value = hex_digit_to_int(ch);
+            if (digit_value == -1) {
+                ERROR("High unicode escape (\\U) requires exactly eight "
+                      "digits");
+                free_token(lexer);
+                break;
+            }
+            if (add_digit(lexer, digit_value, 16, UNICODE_MAX,
+                      "High unicode escape (\\U) exceeds unicode value")
+                && lexer->digit_count == 8
+                && add_str_wchar(lexer)
+            )
+                lexer->state = SCAN_STRING;
+            break;
+
+        case SCAN_NUMBER_BASE:
+            switch (ch) {
+            case 'b':
+            case 'B':
+                lexer->int_value = 0;
+                lexer->state = SCAN_BINARY;
+                break;
+
+            case 'x':
+            case 'X':
+                lexer->int_value = 0;
+                lexer->state = SCAN_HEX;
+                break;
+
+            default:
+                if (ch >= 0 && ch <= 9) {
+                    lexer->int_value = 0;
+                    lexer->state = SCAN_OCTAL;
+                    BACK_UP;
+                } else {
+                    if (emit_int(lexer, 0))
+                        lexer->state = SCAN_EXPR_WHITESPACE;
+                    BACK_UP;
+                }
+                break;
+            }
+            break;
+
+        case SCAN_DECIMAL:
+            switch (ch) {
+            case '.':
+                lexer->float_value = lexer->int_value;
+                lexer->state = SCAN_DECIMAL_FRACTION;
+                lexer->digit_count = 0;
+                break;
+
+            case 'e':
+            case 'E':
+                lexer->float_value = lexer->int_value;
+                lexer->state = SCAN_DECIMAL_EXPONENT_SIGN;
+                break;
+
+            default:
+                if (ch >= '0' && ch <= '9') {
+                    if (DIGIT_EXCEEDS(ch - '0', INT64_MAX, 10)) {
+                        lexer->float_value = lexer->int_value;
+                        lexer->state = SCAN_DECIMAL_FLOAT;
+                    } else
+                        add_safe_digit(lexer, ch - '0', 10);
+                } else {
+                    if (emit_int(lexer, lexer->int_value))
+                        lexer->state = SCAN_EXPR_WHITESPACE;
+                    BACK_UP;
+                }
+                break;
+            }
+            break;
+
+        case SCAN_HEX:
+            switch (ch) {
+            case '.':
+                lexer->float_value = lexer->int_value;
+                lexer->state = SCAN_HEX_FRACTION;
+                lexer->digit_count = 0;
+                break;
+
+            case 'p':
+            case 'P':
+                lexer->float_value = lexer->int_value;
+                lexer->state = SCAN_HEX_EXPONENT_SIGN;
+                break;
+
+            default:
+                digit_value = hex_digit_to_int(ch);
+                if (digit_value != -1) {
+                    if (DIGIT_EXCEEDS(digit_value, INT64_MAX, 16)) {
+                        lexer->float_value = lexer->int_value;
+                        lexer->state = SCAN_HEX_FLOAT;
+                    } else
+                        add_safe_digit(lexer, digit_value, 10);
+                } else {
+                    if (EMIT_INT())
+                        lexer->state = SCAN_EXPR_WHITESPACE;
+                    BACK_UP;
+                }
+                break;
+            }
+            break;
+
+        case SCAN_BINARY:
+            if (ch == '0' || ch == '1') {
+                add_digit(lexer, ch - '0', 2, INT64_MAX,
+                    "Binary literal exceeds maximum value");
+            } else if (ch == '.') {
+                ERROR("Fractional binary literals not allowed");
+            } else if (ch >= '2' && ch <= '9') {
+                ERROR("Illegal binary digit %c", ch);
+            } else {
+                if (EMIT_INT())
+                    lexer->state = SCAN_EXPR_WHITESPACE;
+                BACK_UP;
+            }
+            break;
+
+        case SCAN_OCTAL:
+            if (ch >= '0' && ch <= '7') {
+                add_digit(lexer, ch - '0', 2, INT64_MAX,
+                    "Octal literal exceeds maximum value");
+            } else if (ch == '.') {
+                ERROR("Fractional octal literals not allowed");
+            } else if (ch == '8' || ch == '9') {
+                ERROR("Illegal octal digit %c", ch);
+            } else {
+                if (EMIT_INT())
+                    lexer->state = SCAN_EXPR_WHITESPACE;
+                BACK_UP;
+            }
+            break;
+
+        case SCAN_DECIMAL_FLOAT:
+            switch (ch) {
+            case '.':
+                lexer->state = SCAN_DECIMAL_FRACTION;
+                lexer->digit_count = 0;
+                break;
+
+            case 'e':
+            case 'E':
+                lexer->state = SCAN_DECIMAL_EXPONENT_SIGN;
+                break;
+
+            default:
+                if (ch >= '0' && ch <= '9')
+                    add_float_digit(lexer, ch - '0', 10);
+                else {
+                    if (EMIT_FLOAT())
+                        lexer->state = SCAN_EXPR_WHITESPACE;
+                    BACK_UP;
+                }
+                break;
+            }
+            break;
+
+        case SCAN_DECIMAL_FRACTION:
+            switch (ch) {
+            case 'e':
+            case 'E':
+                lexer->state = SCAN_DECIMAL_EXPONENT_SIGN;
+                break;
+
+            default:
+                if (ch >= '0' && ch <= '9')
+                    add_float_fraction_digit(lexer, ch - '0', 10);
+                else {
+                    if (EMIT_FLOAT())
+                        lexer->state = SCAN_EXPR_WHITESPACE;
+                    BACK_UP;
+                }
+                break;
+            }
+            break;
+
+        case SCAN_DECIMAL_EXPONENT_SIGN:
+            if (ch == '-')
+                lexer->exponent_sign = -1;
+            else {
+                lexer->exponent_sign = 1;
+                BACK_UP;
+            }
+            lexer->int_value = 0;
+            lexer->digit_count = 0;
+            lexer->state = SCAN_DECIMAL_EXPONENT;
+            break;
+
+        case SCAN_DECIMAL_EXPONENT:
+            if (ch >= '0' && ch <= '9') {
+                if (lexer->digit_count == 3) {
+                    ERROR("Decimal exponent must be 3 digits or less");
+                } else
+                    add_safe_digit(lexer, ch - '0', 10);
+            } else if (!lexer->digit_count) {
+                ERROR("No digits after decimal exponent delimiter");
+            } else {
+                lexer->float_value *= powf(10, lexer->int_value);
+                EMIT_FLOAT();
+                lexer->state = SCAN_EXPR_WHITESPACE;
+                BACK_UP;
+            }
+            break;
+
+        case SCAN_HEX_FLOAT:
+            switch (ch) {
+            case '.':
+                lexer->state = SCAN_HEX_FRACTION;
+                lexer->digit_count = 0;
+                break;
+
+            case 'p':
+            case 'P':
+                lexer->state = SCAN_HEX_EXPONENT_SIGN;
+                break;
+
+            default:
+                digit_value = hex_digit_to_int(ch);
+                if (digit_value != -1)
+                    add_float_digit(lexer, digit_value, 16);
+                else {
+                    if (EMIT_FLOAT())
+                        lexer->state = SCAN_EXPR_WHITESPACE;
+                    BACK_UP;
+                }
+                break;
+            }
+            break;
+
+        case SCAN_HEX_FRACTION:
+            switch (ch) {
+            case 'p':
+            case 'P':
+                lexer->state = SCAN_HEX_EXPONENT_SIGN;
+                break;
+
+            default:
+                digit_value = hex_digit_to_int(ch);
+                if (digit_value  != -1)
+                    add_float_fraction_digit(lexer, digit_value, 16);
+                else {
+                    if (EMIT_FLOAT())
+                        lexer->state = SCAN_EXPR_WHITESPACE;
+                    BACK_UP;
+                }
+                break;
+            }
+            break;
+
+        case SCAN_HEX_EXPONENT_SIGN:
+            if (ch == '-')
+                lexer->exponent_sign = -1;
+            else {
+                lexer->exponent_sign = 1;
+                BACK_UP;
+            }
+            lexer->int_value = 0;
+            lexer->digit_count = 0;
+            lexer->state = SCAN_HEX_EXPONENT;
+            break;
+
+        case SCAN_HEX_EXPONENT:
+            digit_value = hex_digit_to_int(ch);
+            if (digit_value != -1) {
+                if (lexer->digit_count == 2) {
+                    ERROR("Hex exponent must be 2 digits or less");
+                } else
+                    add_safe_digit(lexer, digit_value, 16);
+            } else if (!lexer->digit_count) {
+                ERROR("No digits after hex exponent delimiter");
+            } else {
+                lexer->float_value *= powf(16, lexer->int_value);
+                EMIT_FLOAT();
+                BACK_UP;
+            }
+            break;
+
+        default:
+            ERROR("Internal: Unknown lexer state %d", lexer->state);
+            break;
         }
 }
 
 void gcode_lexer_finish(GCodeLexer* lexer) {
-    if (lexer->state != PARSING_COMPLETE)
+    if (lexer->state != SCAN_COMPLETE)
         gcode_lexer_scan(lexer, "\0", 1);
     switch (lexer->state) {
-        case PARSING_COMPLETE:
-        case PARSING_WHITESPACE:
-        case PARSING_COMMENT:
-        case PARSING_NEWLINE:
-            break;
+    case SCAN_COMPLETE:
+    case SCAN_STATEMENT_WHITESPACE:
+    case SCAN_COMMENT:
+    case SCAN_NEWLINE:
+        break;
 
-        case PARSING_STRING:
-            lexer->error(lexer->context, "Unterminated string literal");
-            break;
+    case SCAN_STRING:
+        lexer->error(lexer->context, "Unterminated string literal");
+        break;
 
-        case PARSING_EXPRESSION:
-            lexer->error(lexer->context, "Unterminated expression");
-            break;
+    case SCAN_EXPR_WHITESPACE:
+        lexer->error(lexer->context, "Unterminated expression");
+        break;
 
-        default:
-            // Parsing \0 should terminate all other states
-            lexer->error(lexer->context,
-                "Internal error: Lexing terminated in unknown state %d",
-                lexer->state);
+    default:
+        // Parsing \0 should terminate all other states
+        lexer->error(lexer->context,
+            "Internal error: Lexing terminated in unknown state %d",
+            lexer->state);
     }
 }
 
 void gcode_lexer_reset(GCodeLexer* lexer) {
-    lexer->state = PARSING_NEWLINE;
+    lexer->state = SCAN_NEWLINE;
     lexer->token_length = 0;
 }
 

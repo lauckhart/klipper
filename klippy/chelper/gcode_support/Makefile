@@ -37,7 +37,7 @@ out:
 out/depend: $(SOURCES)
 	mkdir -p out
 	rm -f out/depend
-	$(CC) $(CFLAGS) -MM $^ > out/depend
+	$(CC) $(CFLAGS) -MM $^ | sed -e 's/\(.*\.o\)/out\/\1/' > out/depend
 
 out/%.o: %.c
 	$(CC) -c -o $@ $< $(CFLAGS)

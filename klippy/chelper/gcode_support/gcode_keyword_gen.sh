@@ -61,4 +61,6 @@ END
     done
 } > out/gcode_parser.keywords.gperf
 
-gperf -e"$TAB" out/gcode_parser.keywords.gperf > ../gcode_keywords.generated.c
+gperf -l -e"$TAB" out/gcode_parser.keywords.gperf \
+    | grep -v "#line" \
+    > ../gcode_keywords.generated.c

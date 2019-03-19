@@ -52,9 +52,10 @@ typedef enum gcode_operator_type_t {
 
 // The base "class" for all nodes.  All nodes share a type differentiation and
 // a pointer that allows them to participate in linked lists..
+typedef struct GCodeNode GCodeNode;
 typedef struct GCodeNode {
     gcode_node_type_t type;
-    struct GCodeNode* next;
+    GCodeNode* next;
 } GCodeNode;
 
 // A base class for nodes that have parent nodes.  Adds a pointer to the first
@@ -66,11 +67,12 @@ typedef struct GCodeParentNode {
 } GCodeParentNode;
 
 // A "statement" is a single line of G-Code.
-typedef struct GStatementNode {
+typedef struct GCodeStatementNode GCodeStatementNode;
+struct GCodeStatementNode {
     gcode_node_type_t type;
-    struct GCodeStatementNode* next;
+    GCodeStatementNode* next;
     GCodeNode* children;
-} GCodeStatementNode;
+};
 
 // A 'parameter" is a variable input value to a G-Code statement.'
 typedef struct GCodeParameterNode {

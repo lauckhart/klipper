@@ -25,26 +25,35 @@ typedef struct GCodeParser GCodeParser;
 //
 // Args:
 //     context - an opaque handle passed to all callbacks
-//     error - invoked on fatal error.  Parsing stops after invocation
-//     statements - invoked as statements are procued; must be freed using
+//     error - invoked on fatal error.  Current statement is skipped after
+//         invocation
+//     statement - invoked for each statement produced; must be freed using
 //         gcode_node_delete
 //
 // Returns the new parser or NULL on fatal error.
 GCodeParser* gcode_parser_new(
     void* context,
     bool (*error)(void* context, const char* text),
-    bool (*statements)(void* context, GCodeStatementNode* statements)
+    bool (*statement)(void* context, GCodeStatementNode* statements)
 );
 
 // Parse a string.  Lexical state persists between calls so buffer may
-// terminate anywhere in a statement.
+// terminate anywhere in a statement.  Error handling occurs via the parser
+// error callback.
 //
 // Args:
 //     parser - the parser
 //     buffer - pointer to characters to parse
 //     length - length of the buffer
-bool gcode_parser_parse(GCodeParser* parser, const char* buffer,
+void gcode_parser_parse(GCodeParser* parser, const char* buffer,
                         size_t length);
+
+// Inform parser that no more data is incoming.  Will terminate the last
+// statement if no newline is present.
+//
+// Args:
+//     parser - the parser
+void gcode_parser_finish(GCodeParser* parser);
 
 // Frees parser resources.
 //
