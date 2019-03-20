@@ -15,6 +15,7 @@
 #define __GCODE_PARSER_H
 
 #include "gcode_ast.h"
+#include "gcode_error.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -33,7 +34,7 @@ typedef struct GCodeParser GCodeParser;
 // Returns the new parser or NULL on fatal error.
 GCodeParser* gcode_parser_new(
     void* context,
-    bool (*error)(void* context, const char* text),
+    void (*error)(void* context, const GCodeError* error),
     bool (*statement)(void* context, GCodeStatementNode* statements)
 );
 

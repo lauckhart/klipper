@@ -15,6 +15,7 @@
 #define __GCODE_INTERPRETER_H
 
 #include "gcode_ast.h"
+#include "gcode_error.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -52,15 +53,17 @@ typedef struct GCodeInterpreter GCodeInterpreter;
 //     context - opaque handled used in all callbacks
 //     error - error handling callback
 //     lookup - dictionary lookup callback, handles foo.bar and foo["bar"].
-//         If the child is not found, the callback should set the result type
-//         to GCODE_VAL_UNKNOWN and return true
+//         If the child is not found, the callback should leave the result type
+//         as GCODE_VAL_UNKNOWN and return true.  Strings should live the
+//         lifetime of the current statement; the char* functions below return
+//         strings that meet this criteria 
 //     serialize - callback for serializing dicts
 //     exec - called for each output line of raw G-Code
 //
 // Returns the new interpreter or NULL on OOM.
 GCodeInterpreter* gcode_interp_new(
     void* context,
-    bool (*error)(void* context, const char* text),
+    void (*error)(void* context, const GCodeError* error),
     bool (*lookup)(void* context, const GCodeVal* key, dict_handle_t parent,
                    GCodeVal* result),
     const char* (*serialize)(void* context, dict_handle_t dict),

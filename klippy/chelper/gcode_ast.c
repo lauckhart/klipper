@@ -13,6 +13,7 @@ GCodeNode* gcode_parameter_new(const char* name) {
     GCodeParameterNode* n = malloc(sizeof(GCodeParameterNode));
     if (!n)
         return NULL;
+    n->type = GCODE_PARAMETER;
     n->name = (char*)(n + 1);
     strncpy((char*)(n + 1), name, l + 1);
     return (GCodeNode*)n;

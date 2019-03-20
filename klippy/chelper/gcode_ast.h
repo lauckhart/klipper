@@ -147,6 +147,7 @@ static inline GCodeNode* gcode_statement_new(GCodeNode* children) {
     GCodeStatementNode* n = malloc(sizeof(GCodeStatementNode));
     if (!n)
         return NULL;
+    n->type = GCODE_STATEMENT;
     n->children = children;
     return (GCodeNode*)n;
 }

@@ -14,15 +14,17 @@
 #include <string.h>
 #include <math.h>
 
-static void yyerror(GCodeParser* parser, const char* msg);
+static void yyerror(const GCodeLocation* location, GCodeParser* parser,
+                    const char* msg);
 
 struct GCodeParser {
     void* context;
     GCodeLexer* lexer;
     bool in_expr;
     struct yypstate* yyps;
+    GCodeError* error;
+    GCodeLocation location;
 
-    bool (*error)(void*, const char*);
     bool (*statement)(void*, GCodeStatementNode*);
 };
 
@@ -48,6 +50,8 @@ static inline GCodeNode* newop3(
 }
 
 static inline bool add_statement(GCodeParser* parser, GCodeNode* children) {
+    if (!children)
+        return true;
     GCodeStatementNode* statement =
         (GCodeStatementNode*)gcode_statement_new(children);
     if (!statement)
@@ -56,33 +60,28 @@ static inline bool add_statement(GCodeParser* parser, GCodeNode* children) {
     return true;
 }
 
-static bool error(void* context, const char* format, ...) {
-    GCodeParser* parser = context;
-    va_list argp;
-    va_start(argp, format);
-    char* buf = malloc(128);
-    int rv = vsnprintf(buf, 128, format, argp);
-    if (rv < 0)
-        parser->error(parser->context, "Internal: Failed to produce error");
-    else {
-        if (rv > 128) {
-            buf = realloc(buf, rv);
-            vsnprintf(buf, rv, format, argp);
-        }
-        parser->error(parser->context, buf);
-    }
-    free(buf);
-    va_end(argp);
-    return rv >= 0;
-}
-
 static void out_of_memory(GCodeParser* parser) {
-    error(parser->context, "Out of memory (allocating parse node)");
+    EMIT_ERROR(parser, "Out of memory (allocating parse node)");
 }
 
 #define OOM(val) if (!(val)) { \
     out_of_memory(parser); \
     YYERROR; \
+}
+
+typedef GCodeLocation YYLTYPE;
+#define YYLTYPE_IS_DECLARED
+#define YYLLOC_DEFAULT
+
+static void yyerror(const GCodeLocation* location, GCodeParser* parser,
+                    const char* msg)
+{
+    // Aw Bison...  Our ERROR token is the only way to push an error into the
+    // parser, but then we can only skip it using ghetto string matching
+    if (strstr(msg, "syntax error, unexpected ERROR"))
+        return;
+    gcode_error_set_location(parser->error, location);
+    EMIT_ERROR(parser, "G-Code parse error: %s", msg);
 }
 
 %}
@@ -93,24 +92,34 @@ static void out_of_memory(GCodeParser* parser) {
 %define parse.error verbose
 %start statements
 %param {GCodeParser* parser}
+%locations
 
 %union {
     int keyword;
-    const char* identifier;
     int64_t int_value;
     double float_value;
-    const char* str_value;
+    char* str;
     GCodeNode* node;
 }
 
+%destructor { free($$); } <str>
 %destructor { gcode_node_delete($$); } <node>
 
-%token <identifier> IDENTIFIER;
-%token <int_value> INTEGER;
-%token <float_value> FLOAT;
-%token <str_value> STRING;
+%token <str> IDENTIFIER
+%token <str> STRING
+%token <int_value> INTEGER
+%token <float_value> FLOAT
 
-%token <keyword> EOL "\n"
+// Pushes lexer errors into the parser
+%token <keyword> ERROR
+
+// Indicates two expressions should be concatenated.  Results from G-Code such
+// as X{x}
+%token <keyword> SPECIAL
+
+// Terminates current statement
+%token <keyword> END_OF_STATEMENT
+
 %token <keyword> OR "OR"
 %token <keyword> AND "AND"
 %token <keyword> EQUAL "="
@@ -133,17 +142,13 @@ static void out_of_memory(GCodeParser* parser) {
 %token <keyword> LPAREN "("
 %token <keyword> RPAREN ")"
 %token <keyword> NAN "NAN"
-%token <keyword> INFINITY "INFINITY"
+%token <keyword> INF "INF"
 %token <keyword> TRUE "TRUE"
 %token <keyword> FALSE "FALSE"
 %token <keyword> LBRACKET "["
 %token <keyword> RBRACKET "]"
 %token <keyword> LBRACE "{"
 %token <keyword> RBRACE "}"
-
-// This special keyword is an indicator from the lexer that two expressions
-// should be concatenated.  Results from G-Code such as X(x)
-%token <keyword> BRIDGE "\xff"
 
 %left OR
 %left AND
@@ -177,11 +182,11 @@ statements:
 
 save_statement:
   statement                 { OOM(add_statement(parser, $statement)); }
+| error
 ;
 
 statement:
-  "\n"                      { $$ = NULL; }
-| error "\n"                { $$ = NULL; }
+  END_OF_STATEMENT          { $$ = NULL; }
 | field[a] statement[b]     { $$ = gcode_add_next($a, $b); }
 ;
 
@@ -199,7 +204,7 @@ expr:
 | FLOAT                     { OOM($$ = gcode_float_new($1)); }
 | TRUE                      { OOM($$ = gcode_bool_new(true)); }
 | FALSE                     { OOM($$ = gcode_bool_new(false)); }
-| INFINITY                  { OOM($$ = gcode_float_new(INFINITY)); }
+| INF                       { OOM($$ = gcode_float_new(INFINITY)); }
 | NAN                       { OOM($$ = gcode_float_new(NAN)); }
 | "!" expr[a]               { OOM($$ = gcode_operator_new(GCODE_NOT, $a)); }
 | "-" expr[a] %prec UNARY   { OOM($$ = gcode_operator_new(GCODE_NEGATE, $a)); }
@@ -227,11 +232,11 @@ expr:
 ;
 
 parameter:
-  IDENTIFIER                { OOM($$ = gcode_parameter_new($1)); }
+  IDENTIFIER                { OOM($$ = gcode_parameter_new($1)); free($1); }
 ;
 
 string:
-  STRING                    { OOM($$ = gcode_str_new($1)); }
+  STRING                    { OOM($$ = gcode_str_new($1)); free($1); }
  ;
 
 exprs:
@@ -246,41 +251,62 @@ expr_list:
 
 %%
 
-static void yyerror(GCodeParser* parser, const char* msg) {
-    error(parser, "G-Code parse error: %s", msg);
+static void push_error(GCodeParser* parser) {
+    // Our lexer generates errors.  With a push parser, the only way to convey
+    // the error to Bison is to give it a token with no semantic meaning.  This
+    // in turn triggers our error state which skips the remainder of the
+    // statement.
+    yypush_parse(parser->yyps, TOK_ERROR, NULL, &parser->location, parser);
 }
 
 static bool lex_keyword(void* context, gcode_keyword_t id) {
     GCodeParser* parser = context;
 
-    yypush_parse(parser->yyps, id, NULL, parser);
+    yypush_parse(parser->yyps, id, NULL, &parser->location, parser);
+
+    return true;
+}
+
+static bool lex_bridge(void* context) {
+    GCodeParser* parser = context;
+    yypush_parse(parser->yyps, TOK_BRIDGE, NULL, &parser->location, parser);
+    return true;
+}
+
+static bool lex_end_of_statement(void* context) {
+    GCodeParser* parser = context;
+    yypush_parse(parser->yyps, TOK_END_OF_STATEMENT, NULL, &parser->location, parser);
+    return true;
+}
+
+static inline bool push_string(void* context, int id, const char* value) {
+    GCodeParser* parser = context;
+
+    YYSTYPE yys = { .str = strdup(value) };
+    if (!yys.str) {
+        EMIT_ERROR(parser, "Out of memory (push_string)");
+        push_error(parser);
+        return false;
+    }
+
+    yypush_parse(parser->yyps, id, &yys, &parser->location, parser);
 
     return true;
 }
 
 static bool lex_identifier(void* context, const char* name) {
-    GCodeParser* parser = context;
-
-    YYSTYPE yys = { .identifier = name };
-    yypush_parse(parser->yyps, TOK_IDENTIFIER, &yys, parser);
-
-    return true;
+    push_string(context, TOK_IDENTIFIER, name);
 }
 
 static bool lex_string_literal(void* context, const char* value) {
-    GCodeParser* parser = context;
-
-    YYSTYPE yys = { .str_value = value };
-    yypush_parse(parser->yyps, TOK_STRING, &yys, parser);
-
-    return true;
+    push_string(context, TOK_STRING, value);
 }
 
 static bool lex_int_literal(void* context, int64_t value) {
     GCodeParser* parser = context;
 
     YYSTYPE yys = { .int_value = value };
-    yypush_parse(parser->yyps, TOK_INTEGER, &yys, parser);
+    yypush_parse(parser->yyps, TOK_INTEGER, &yys, &parser->location, parser);
 
     return true;
 }
@@ -289,47 +315,61 @@ static bool lex_float_literal(void* context, double value) {
     GCodeParser* parser = context;
 
     YYSTYPE yys = { .float_value = value };
-    yypush_parse(parser->yyps, TOK_FLOAT, &yys, parser);
+    yypush_parse(parser->yyps, TOK_FLOAT, &yys, &parser->location, parser);
 
     return true;
 }
 
+void lex_error(void* context, const GCodeError* error) {
+    GCodeParser* parser = (GCodeParser*)context;
+    gcode_error_forward(parser->error, error);
+    push_error(parser);
+}
+
 GCodeParser* gcode_parser_new(
     void* context,
-    bool (*error_fn)(void*, const char*),
+    void (*error)(void*, const GCodeError* error),
     bool (*statement)(void*, GCodeStatementNode*))
 {
     GCodeParser* parser = malloc(sizeof(GCodeParser));
-    if (!parser) {
-        error(context, "Out of memory (gcode_parser_new)");
+    if (!parser)
+        return NULL;
+
+    parser->error = gcode_error_new(context, error);
+    if (!error) {
+        free(parser);
         return NULL;
     }
 
     parser->context = context;
     parser->in_expr = false;
 
-    parser->error = error_fn;
     parser->statement = statement;
 
     parser->lexer = gcode_lexer_new(
         parser,
-        error,
+        &parser->location,
+        lex_error,
         lex_keyword,
         lex_identifier,
         lex_string_literal,
         lex_int_literal,
-        lex_float_literal
+        lex_float_literal,
+        lex_bridge,
+        lex_end_of_statement
     );
     if (!parser->lexer) {
+        gcode_error_delete(parser->error);
         free(parser);
         return NULL;
     }
 
     parser->yyps = yypstate_new();
     if (!parser->yyps) {
-        error(context, "Out of memory (gcode_parser_new)");
+        gcode_error_delete(parser->error);
         gcode_lexer_delete(parser->lexer);
         free(parser);
+        return NULL;
     }
 
     return parser;
@@ -347,6 +387,7 @@ void gcode_parser_finish(GCodeParser* parser) {
 
 void gcode_parser_delete(GCodeParser* parser) {
     gcode_lexer_delete(parser->lexer);
+    gcode_error_delete(parser->error);
     if (parser->yyps)
         yypstate_delete(parser->yyps);
     free(parser);

@@ -23,7 +23,8 @@ struct GCodeInterpreter {
     size_t str_length;
     size_t str_limit;
 
-    bool (*error)(void*, const char*);
+    GCodeError* error;
+
     bool (*lookup)(void*,  const GCodeVal*, dict_handle_t, GCodeVal*);
     const char* (*serialize)(void*, dict_handle_t);
     bool (*exec)(void*, const char**, size_t);
@@ -31,19 +32,22 @@ struct GCodeInterpreter {
 
 GCodeInterpreter* gcode_interp_new(
     void* context,
-    bool (*error)(void*, const char*),
+    void (*error)(void*, const GCodeError*),
     bool (*lookup)(void*, const GCodeVal*, dict_handle_t, GCodeVal*),
     const char* (*serialize)(void*, dict_handle_t),
     bool (*exec)(void*, const char**, size_t))
 {
     GCodeInterpreter* interp = malloc(sizeof(GCodeInterpreter));
-    if (!interp) {
-        error(context, "Out of memory (gcode_interp_new)");
+    if (!interp)
+        return NULL;
+
+    interp->error = gcode_error_new(context, error);
+    if (!interp->error) {
+        free(interp);
         return NULL;
     }
 
     interp->context = context;
-    interp->error = error;
     interp->lookup = lookup;
     interp->serialize = serialize;
     interp->exec = exec;
@@ -57,34 +61,15 @@ GCodeInterpreter* gcode_interp_new(
     interp->str_limit = 0;
 }
 
-static void error(GCodeInterpreter* interp, const char* format, ...) {
-    va_list argp;
-    va_start(argp, format);
-    char* buf = malloc(128);
-    int rv = vsnprintf(buf, 128, format, argp);
-    if (rv < 0)
-        interp->error(interp->context,
-                      "Internal: Error formatting error message");
-    else {
-        if (rv > 128) {
-            buf = realloc(buf, rv);
-            vsnprintf(buf, rv, format, argp);
-        }
-        interp->error(interp->context, buf);
-    }
-    free(buf);
-    va_end(argp);
-}
-
 static bool str_expand(GCodeInterpreter* interp, size_t size) {
     if (interp->str_limit - interp->str_length < size) {
-        size_t alloc_size = interp->str_limit < size
-            ? interp->str_limit + interp->str_limit
-            : interp->str_limit * 2;
-        interp->str_buf = realloc(interp->str_buf, alloc_size);
+        if (!interp->str_limit)
+            interp->str_limit = 512;
+        while (interp->str_limit < size)
+            interp->str_limit *= 2;
+        interp->str_buf = realloc(interp->str_buf, interp->str_limit);
         if (!interp->str_buf) {
-            interp->str_length = 0;
-            error(interp, "Out of memory (str_expand)");
+            EMIT_ERROR(interp, "Out of memory (str_expand)");
             return false;
         }
     }
@@ -114,8 +99,7 @@ const char* gcode_interp_printf(GCodeInterpreter* interp, const char* format,
                            argp);
     if (length < 0) {
         va_end(argp);
-        interp->error(interp->context,
-                      "Internal: GCodeInterpreter printf failure");
+        EMIT_ERROR(interp, "Internal: GCodeInterpreter printf failure");
         return NULL;
     }
 
@@ -130,8 +114,7 @@ const char* gcode_interp_printf(GCodeInterpreter* interp, const char* format,
                            argp);
         if (length < 0) {
             va_end(argp);
-            interp->error(interp->context,
-                          "Internal: GCodeInterpreter printf failure");
+            EMIT_ERROR(interp, "Internal: GCodeInterpreter printf failure");
             return NULL;
         }
     }
@@ -157,10 +140,10 @@ inline const char* gcode_str_cast(GCodeInterpreter* interp, const GCodeVal* val)
         return val->bool_val ? "true" : "false";
 
     case GCODE_VAL_INT:
-        return gcode_interp_printf(interp, PRIu64, val->int_val);
+        return gcode_interp_printf(interp, "%" PRIi64, val->int_val);
 
     case GCODE_VAL_FLOAT:
-        return gcode_interp_printf(interp, "%f", val->float_val);
+        return gcode_interp_printf(interp, "%g", val->float_val);
 
     case GCODE_VAL_DICT:
         if (interp->serialize)
@@ -278,7 +261,7 @@ static bool compare(GCodeInterpreter* interp, GCodeVal* a, GCodeVal* b,
                     int8_t* result)
 {
     if (!a || !b)
-        interp->error(interp->context, "Internal: NULL comparison");
+        EMIT_ERROR(interp, "Internal: NULL comparison");
 
     if (a->type == GCODE_VAL_DICT || b->type == GCODE_VAL_DICT) {
         *result = a->type == b->type && a->dict_val == b->dict_val ? 0 : 2;
@@ -318,7 +301,7 @@ static bool compare(GCodeInterpreter* interp, GCodeVal* a, GCodeVal* b,
         break;
 
     default:
-        error(interp, "Internal: Comparison of unknown value type %d", a->type);
+        EMIT_ERROR(interp, "Internal: Comparison of unknown value type %d", a->type);
         return false;
     }
     return true;
@@ -415,7 +398,7 @@ static inline bool eval_operator(GCodeInterpreter* interp,
                                  GCodeVal* output)
 {
     const GCodeNode* child = input->children;
-    switch (input->type) {
+    switch (input->operator) {
     case GCODE_AND: {
         EVAL2;
         SET_BOOL(gcode_bool_cast(&a) && gcode_bool_cast(&b));
@@ -573,14 +556,14 @@ static inline bool eval_operator(GCodeInterpreter* interp,
             const char* key = gcode_str_cast(interp, &b);
             if (!key)
                 return false;
-            error(interp, "No such property '%s'", key);
+            EMIT_ERROR(interp, "No such property '%s'", key);
             return false;
         }
         break;
     }
 
     default:
-        error(interp, "Internal: Unknown operator type %d", input->operator);
+        EMIT_ERROR(interp, "Internal: Unknown operator type %d", input->operator);
         return false;
     }
     return true;
@@ -589,9 +572,13 @@ static inline bool eval_operator(GCodeInterpreter* interp,
 static bool eval(GCodeInterpreter* interp, const GCodeNode* input,
                  GCodeVal* output)
 {
+    if (!input) {
+        EMIT_ERROR(interp, "Internal: Eval of NULL expression node");
+        return false;
+    }
     switch (input->type) {
     case GCODE_STATEMENT:
-        error(interp, "Internal: Unexpected statement in expression");
+        EMIT_ERROR(interp, "Internal: Unexpected statement in expression");
         return false;
 
     case GCODE_PARAMETER: {
@@ -602,7 +589,7 @@ static bool eval(GCodeInterpreter* interp, const GCodeNode* input,
         if (!lookup(interp, NULL, &key, output))
             return false;
         if (output->type == GCODE_VAL_UNKNOWN) {
-            error(interp, "Parameter '%s' not defined", key.str_val);
+            EMIT_ERROR(interp, "Parameter '%s' not defined", key.str_val);
             return false;
         }
         break;
@@ -633,12 +620,12 @@ static bool eval(GCodeInterpreter* interp, const GCodeNode* input,
 
     case GCODE_FUNCTION:
         // No functions currently
-        error(interp, "No such function '%s'",
-              ((GCodeFunctionNode*)input)->name);
+        EMIT_ERROR(interp, "No such function '%s'",
+                   ((GCodeFunctionNode*)input)->name);
         return false;
 
     default:
-        error(interp, "Internal: Unknown node type %d", input->type);
+        EMIT_ERROR(interp, "Internal: Unknown node type %d", input->type);
         return false;
     }
     return true;
@@ -651,7 +638,7 @@ static inline bool buffer_field(GCodeInterpreter* interp, const char* text) {
         interp->field_buf = realloc(interp->field_buf, new_limit);
         if (!interp->field_buf) {
             interp->field_count = interp->field_limit = 0;
-            error(interp, "Out of memory (buffer_field)");
+            EMIT_ERROR(interp, "Out of memory (buffer_field)");
             return false;
         }
     }
@@ -687,6 +674,8 @@ void gcode_interp_exec(GCodeInterpreter* interp,
 }
 
 void gcode_interp_delete(GCodeInterpreter* interp) {
+    gcode_error_delete(interp->error);
     free(interp->field_buf);
+    free(interp->str_buf);
     free(interp);
 }

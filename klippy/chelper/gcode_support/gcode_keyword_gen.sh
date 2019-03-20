@@ -27,8 +27,9 @@ mkdir -p out
 
 # Read token strings from bison source file
 LINES=$(
-    sed -n '/^%token <keyword>/{s/%token <keyword> *//; p}' \
-    gcode_parser.y)
+    sed -n '/^%token <keyword>/{s/%token <keyword> *//; p}' gcode_parser.y |
+        grep '"'
+)
 declare -A STRS_BY_NAME
 while read -r IDENT STR; do
     STRS_BY_NAME[$IDENT]=$STR

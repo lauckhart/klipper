@@ -2,6 +2,7 @@
 #include "../gcode_interpreter.h"
 
 #include <stdio.h>
+#include <locale.h>
 
 typedef struct CLI {
     FILE* input;
@@ -9,8 +10,8 @@ typedef struct CLI {
     GCodeInterpreter* interp;
 } CLI;
 
-bool error(void* context, const char* text) {
-    printf("*** ERROR: %s\n", text);
+void error(void* context, const GCodeError* error) {
+    printf("*** ERROR: %s\n", gcode_error_get(error));
 }
 
 bool statement(void* context, GCodeStatementNode* statement) {
@@ -58,19 +59,21 @@ CLI* cli_new(const char* input_filename) {
 
     cli->input = fopen(input_filename, "r");
     if (!cli->input) {
-        error(cli, "Error opening input file");
+        fprintf(stderr, "Error opening input file");
         cli_delete(cli);
         return NULL;
     }
 
     cli->parser = gcode_parser_new(cli, error, statement);
     if (!cli->parser) {
+        fprintf(stderr, "Out of memory (parser creation)");
         cli_delete(cli);
         return NULL;
     }
 
     cli->interp = gcode_interp_new(cli, error, lookup, serialize, exec);
     if (!cli->interp) {
+        fprintf(stderr, "Out of memory (interpreter creation)");
         cli_delete(cli);
         return NULL;
     }
@@ -84,7 +87,7 @@ void cli_run(CLI* cli) {
     while(!feof(cli->input)) {
         size_t length = fread(buf, 1, 4096, cli->input);
         if (ferror(cli->input)) {
-            error(NULL, "I/O error reading input");
+            fprintf(stderr, "I/O error reading input");
             return;
         }
         gcode_parser_parse(cli->parser, buf, length);
@@ -98,6 +101,8 @@ int main(int argc, const char* argv[]) {
         fprintf(stderr, "Usage: %s FILENAME\n", argv[0]);
         return 1;
     }
+
+    setlocale(LC_ALL, "");
 
     CLI* cli = cli_new(argv[1]);
     if (!cli)

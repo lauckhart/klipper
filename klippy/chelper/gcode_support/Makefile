@@ -16,7 +16,8 @@ SOURCES = \
 	gcode_parser.generated.c \
 	gcode_lexer.c \
 	gcode_keywords.generated.c \
-	gcode_ast.c
+	gcode_ast.c \
+	gcode_error.c
 
 KEYWORD_DEPS = \
 	gcode_parser.y \
@@ -34,10 +35,10 @@ KEYWORD_DEPS = \
 out:
 	mkdir out
 
-out/depend: $(SOURCES)
+out/depend: $(SOURCES) Makefile
 	mkdir -p out
 	rm -f out/depend
-	$(CC) $(CFLAGS) -MM $^ | sed -e 's/\(.*\.o\)/out\/\1/' > out/depend
+	$(CC) $(CFLAGS) -MM $(filter-out Makefile, $^) | sed -e 's/\(.*\.o\)/out\/\1/' > out/depend
 
 out/%.o: %.c
 	$(CC) -c -o $@ $< $(CFLAGS)
