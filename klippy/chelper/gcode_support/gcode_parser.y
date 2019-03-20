@@ -28,11 +28,25 @@ struct GCodeParser {
     bool (*statement)(void*, GCodeStatementNode*);
 };
 
+static inline GCodeNode* newop1(
+    gcode_operator_type_t type,
+    GCodeNode* a)
+{
+    if (!a)
+        return NULL;
+    return gcode_operator_new(type, a);
+}
+
 static inline GCodeNode* newop2(
     gcode_operator_type_t type,
     GCodeNode* a,
     GCodeNode* b)
 {
+    if (!a || !b) {
+        gcode_node_delete(a);
+        gcode_node_delete(b);
+        return NULL;
+    }
     GCodeNode* op = gcode_operator_new(type, a);
     gcode_add_next(a, b);
     return op;
@@ -44,6 +58,16 @@ static inline GCodeNode* newop3(
     GCodeNode* b,
     GCodeNode* c)
 {
+    if (!a || !b || !c) {
+        gcode_node_delete(a);
+        gcode_node_delete(b);
+        gcode_node_delete(c);
+        return NULL;
+    }
+    if (!b) {
+        gcode_node_delete(a);
+        return NULL;
+    }
     GCodeNode* op = newop2(type, a, b);
     gcode_add_next(b, c);
     return op;
@@ -122,7 +146,7 @@ static void yyerror(const GCodeLocation* location, GCodeParser* parser,
 
 %token <keyword> OR "OR"
 %token <keyword> AND "AND"
-%token <keyword> EQUAL "="
+%token <keyword> EQUAL "=="
 %token <keyword> CONCAT "~"
 %token <keyword> PLUS "+"
 %token <keyword> MINUS "-"
@@ -134,7 +158,7 @@ static void yyerror(const GCodeLocation* location, GCodeParser* parser,
 %token <keyword> GT ">"
 %token <keyword> LTE "<="
 %token <keyword> GTE ">="
-%token <keyword> NOT "!"
+%token <keyword> NOT "NOT"
 %token <keyword> IF "IF"
 %token <keyword> ELSE "ELSE"
 %token <keyword> DOT "."
@@ -149,6 +173,10 @@ static void yyerror(const GCodeLocation* location, GCodeParser* parser,
 %token <keyword> RBRACKET "]"
 %token <keyword> LBRACE "{"
 %token <keyword> RBRACE "}"
+%token <keyword> STR_CAST "STR"
+%token <keyword> INT_CAST "INT"
+%token <keyword> FLOAT_CAST "FLOAT"
+%token <keyword> BOOL_CAST "BOOLEAN"
 
 %left OR
 %left AND
@@ -171,7 +199,6 @@ static void yyerror(const GCodeLocation* location, GCodeParser* parser,
 %type <node> exprs
 %type <node> expr_list
 %type <node> string
-%type <node> parameter
 
 %%
 
@@ -199,15 +226,15 @@ field:
 expr:
   "(" expr[e] ")"           { $$ = $e; }
 | string
-| parameter
+| IDENTIFIER                { $$ = gcode_parameter_new($1); free($1); OOM($$) }
 | INTEGER                   { OOM($$ = gcode_int_new($1)); }
 | FLOAT                     { OOM($$ = gcode_float_new($1)); }
 | TRUE                      { OOM($$ = gcode_bool_new(true)); }
 | FALSE                     { OOM($$ = gcode_bool_new(false)); }
 | INF                       { OOM($$ = gcode_float_new(INFINITY)); }
 | NAN                       { OOM($$ = gcode_float_new(NAN)); }
-| "!" expr[a]               { OOM($$ = gcode_operator_new(GCODE_NOT, $a)); }
-| "-" expr[a] %prec UNARY   { OOM($$ = gcode_operator_new(GCODE_NEGATE, $a)); }
+| "NOT" expr[a]             { OOM($$ = newop1(GCODE_NOT, $a)); }
+| "-" expr[a] %prec UNARY   { OOM($$ = newop1(GCODE_NEGATE, $a)); }
 | "+" expr[a] %prec UNARY   { OOM($$ = $a); }
 | expr[a] "+" expr[b]       { OOM($$ = newop2(GCODE_ADD, $a, $b)); }
 | expr[a] "-" expr[b]       { OOM($$ = newop2(GCODE_SUBTRACT, $a, $b)); }
@@ -222,21 +249,23 @@ expr:
 | expr[a] ">=" expr[b]      { OOM($$ = newop2(GCODE_GTE, $a, $b)); }
 | expr[a] "<=" expr[b]      { OOM($$ = newop2(GCODE_LTE, $a, $b)); }
 | expr[a] "~" expr[b]       { OOM($$ = newop2(GCODE_CONCAT, $a, $b)); }
-| expr[a] "=" expr[b]       { OOM($$ = newop2(GCODE_EQUALS, $a, $b)); }
-| expr[a] "." parameter[b]  { OOM($$ = newop2(GCODE_LOOKUP, $a, $b)); }
+| expr[a] "==" expr[b]      { OOM($$ = newop2(GCODE_EQUALS, $a, $b)); }
+| expr[a] "." IDENTIFIER[b] { $$ = newop2(GCODE_LOOKUP, $a, gcode_str_new($b));
+                              free($b);
+                              OOM($$); }
 | expr[a] "[" expr[b] "]"   { OOM($$ = newop2(GCODE_LOOKUP, $a, $b)); }
 | expr[a] IF expr[b] ELSE expr[c]
                             { OOM($$ = newop3(GCODE_IFELSE, $a, $b, $c)); }
+| STR_CAST "(" expr[e] ")"  { OOM($$ = newop1(GCODE_STR_CAST, $e))}
+| INT_CAST "(" expr[e] ")"  { OOM($$ = newop1(GCODE_INT_CAST, $e))}
+| BOOL_CAST "(" expr[e] ")" { OOM($$ = newop1(GCODE_BOOL_CAST, $e))}
+| FLOAT_CAST "(" expr[e] ")"{ OOM($$ = newop1(GCODE_FLOAT_CAST, $e))}
 | IDENTIFIER[name] "(" exprs[args] ")"
                             { OOM($$ = gcode_function_new($name, $args)); }
 ;
 
-parameter:
-  IDENTIFIER                { OOM($$ = gcode_parameter_new($1)); free($1); }
-;
-
 string:
-  STRING                    { OOM($$ = gcode_str_new($1)); free($1); }
+  STRING                    { $$ = gcode_str_new($1); free($1); OOM($$); }
  ;
 
 exprs:

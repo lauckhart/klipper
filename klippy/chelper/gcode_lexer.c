@@ -65,6 +65,7 @@ typedef enum state_t {
     SCAN_HEX,
     SCAN_BINARY,
     SCAN_OCTAL,
+    SCAN_DOT,
     SCAN_DECIMAL_FLOAT,
     SCAN_DECIMAL_FRACTION,
     SCAN_DECIMAL_EXPONENT_SIGN,
@@ -267,6 +268,19 @@ static inline bool is_symbol_char(char ch) {
             return true;
     }
 
+    return false;
+}
+
+static inline bool continue_symbol(char c1, char c2) {
+    switch (c1) {
+        case '*':
+            return c2 == '*';
+
+        case '<':
+        case '>':
+        case '=':
+            return c2 == '=';
+    }
     return false;
 }
 
@@ -630,9 +644,7 @@ void gcode_lexer_scan(GCodeLexer* lexer, const char* buffer, size_t length) {
 
                 case '.':
                     TOKEN_START;
-                    lexer->float_value = 0;
-                    lexer->float_fraction_multiplier = 1;
-                    lexer->state = SCAN_DECIMAL_FRACTION;
+                    lexer->state = SCAN_DOT;
                     break;
 
                 case '"':
@@ -675,19 +687,16 @@ void gcode_lexer_scan(GCodeLexer* lexer, const char* buffer, size_t length) {
             break;
 
         case SCAN_SYMBOL:
-            if (is_symbol_char(ch))
+            if (!lexer->token_length
+                || (lexer->token_length == 1
+                    && continue_symbol(*lexer->token_str, ch)))
+            {
                 TOKEN_CHAR(ch);
-            else {
+            } else {
                 if (!emit_symbol(lexer))
                     break;
-                if (ch == '\n') {
-                    TOKEN_START;
-                    ERROR("Unterminated expression");
-                    lexer->state = SCAN_NEWLINE;
-                } else {
-                    lexer->state = SCAN_EXPR;
-                    BACK_UP;
-                }
+                lexer->state = SCAN_EXPR;
+                BACK_UP;
             }
             break;
 
@@ -697,7 +706,11 @@ void gcode_lexer_scan(GCodeLexer* lexer, const char* buffer, size_t length) {
             else {
                 if (!emit_keyword_or_identifier(lexer))
                     break;
-                lexer->state = SCAN_EXPR;
+                if (ch == '.') {
+                    lexer->state = SCAN_DOT;
+                    break;
+                } else
+                    lexer->state = SCAN_EXPR;
                 BACK_UP;
             }
             break;
@@ -973,6 +986,21 @@ void gcode_lexer_scan(GCodeLexer* lexer, const char* buffer, size_t length) {
             } else {
                 if (EMIT_INT())
                     lexer->state = SCAN_EXPR;
+                BACK_UP;
+            }
+            break;
+
+        case SCAN_DOT:
+            if (ch >= '0' && ch <= '9') {
+                lexer->float_value = 0;
+                lexer->float_fraction_multiplier = 1;
+                lexer->state = SCAN_DECIMAL_FRACTION;
+                BACK_UP;
+            } else {
+                TOKEN_CHAR('.');
+                if (!emit_symbol(lexer))
+                    break;
+                lexer->state = SCAN_EXPR;
                 BACK_UP;
             }
             break;

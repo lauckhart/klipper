@@ -4,6 +4,11 @@
 #include <stdio.h>
 #include <locale.h>
 
+typedef struct TrivialDict {
+    const char* key;
+    GCodeVal* value;
+} TrivialDict;
+
 typedef struct CLI {
     FILE* input;
     GCodeParser* parser;
@@ -23,12 +28,33 @@ bool statement(void* context, GCodeStatementNode* statement) {
 bool lookup(void* context, const GCodeVal* key, dict_handle_t parent,
             GCodeVal* result)
 {
-    // TODO
+    // Trivial "dictionary" semantics, a simple dictionary consisting of
+    // { FOO: { BAR: { BIZ: "baz" } } }
+    CLI* cli = (CLI*)context;
+    if (!parent) {
+        if (!strcmp(gcode_str_cast(cli->interp, key), "FOO")) {
+            result->type = GCODE_VAL_DICT;
+            result->dict_val = "foo";
+        }
+    } else if (!strcmp((const char*)parent, "foo")) {
+        if (!strcmp(gcode_str_cast(cli->interp, key), "BAR")) {
+            result->type = GCODE_VAL_DICT;
+            result->dict_val = "bar";
+        }
+    } else if (!strcmp((const char*)parent, "bar")) {
+        if (!strcmp(gcode_str_cast(cli->interp, key), "BIZ")) {
+            result->type = GCODE_VAL_STR;
+            result->str_val = "baz";
+        }
+    }
     return true;
 }
 
 const char* serialize(void* context, dict_handle_t dict) {
-    // TODO
+    if (!strcmp((const char*)dict, "foo"))
+        return "#<dict:foo>";
+    if (!strcmp((const char*)dict, "bar"))
+        return "#<dict:bar>";
     return "";
 }
 

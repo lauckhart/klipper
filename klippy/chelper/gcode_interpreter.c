@@ -128,7 +128,9 @@ static void reset(GCodeInterpreter* interp) {
     interp->str_length = 0;
 }
 
-inline const char* gcode_str_cast(GCodeInterpreter* interp, const GCodeVal* val) {
+inline const char* gcode_str_cast(GCodeInterpreter* interp,
+                                  const GCodeVal* val)
+{
     if (!val)
         return "";
 
@@ -245,7 +247,9 @@ inline double gcode_float_cast(const GCodeVal* val) {
 static bool eval(GCodeInterpreter* interp, const GCodeNode* input,
                  GCodeVal* output);
 
-static inline int compare_floats(double f1, double f2) {
+static inline int compare_floats(const GCodeVal* n1, const GCodeVal* n2) {
+    double f1 = gcode_float_cast(n1);    
+    double f2 = gcode_float_cast(n2);
     if (f1 < f2)
         return -1;
     if (f1 > f2)
@@ -273,7 +277,7 @@ static bool compare(GCodeInterpreter* interp, GCodeVal* a, GCodeVal* b,
         const char* bstr = gcode_str_cast(interp, b);
         if (!bstr)
             return false;
-        *result = strcmp(a->str_val, bstr) == 0;
+        *result = strcmp(a->str_val, bstr);
         break;
     }
 
@@ -287,7 +291,8 @@ static bool compare(GCodeInterpreter* interp, GCodeVal* a, GCodeVal* b,
         switch (b->type) {
             case GCODE_VAL_STR:
             case GCODE_VAL_FLOAT:
-                return compare_floats(gcode_float_cast(a), gcode_float_cast(b));
+                *result = compare_floats(a, b);
+                break;
 
             default: {
                 int bi = gcode_int_cast(b);
@@ -295,13 +300,15 @@ static bool compare(GCodeInterpreter* interp, GCodeVal* a, GCodeVal* b,
                 break;
             }
         }
+        break;
 
     case GCODE_VAL_FLOAT:
-        return compare_floats(gcode_float_cast(a), gcode_float_cast(b));
+        *result = compare_floats(a, b);
         break;
 
     default:
-        EMIT_ERROR(interp, "Internal: Comparison of unknown value type %d", a->type);
+        EMIT_ERROR(interp, "Internal: Comparison of unknown value type %d",
+                   a->type);
         return false;
     }
     return true;
@@ -480,10 +487,25 @@ static inline bool eval_operator(GCodeInterpreter* interp,
     }
 
     case GCODE_DIVIDE: {
-        BINARY_NUM_OP(
-            b.int_val == 0 ? NAN : a.int_val / b.int_val,
-            b.float_val == 0 ? NAN : a.float_val / b.float_val
-        );
+        EVAL2
+        switch (force_to_num2(&a, &b)) {
+        case GCODE_VAL_INT:
+            if (b.int_val == 0) {
+                output->type = GCODE_VAL_FLOAT;
+                output->float_val = NAN;
+            } else {
+                output->type = GCODE_VAL_INT;
+                output->int_val = a.int_val / b.int_val;
+            }
+            break;
+        case GCODE_VAL_FLOAT:
+            output->type = GCODE_VAL_FLOAT;
+            if (b.float_val == 0)
+                output->float_val = NAN;
+            else
+                output->float_val = a.float_val / b.float_val;
+            break;
+        }
         break;
     }
 
@@ -549,21 +571,49 @@ static inline bool eval_operator(GCodeInterpreter* interp,
 
     case GCODE_LOOKUP: {
         EVAL2;
-        GCodeVal result;
         if (!lookup(interp, &a, &b, output))
             return false;
-        if (result.type == GCODE_VAL_UNKNOWN) {
+        if (output->type == GCODE_VAL_UNKNOWN) {
             const char* key = gcode_str_cast(interp, &b);
             if (!key)
                 return false;
-            EMIT_ERROR(interp, "No such property '%s'", key);
+            EMIT_ERROR(interp, "Undefined property '%s'", key);
             return false;
         }
         break;
     }
 
+    case GCODE_STR_CAST: {
+        EVAL1;
+        output->type = GCODE_VAL_STR;
+        output->str_val = gcode_str_cast(interp, &a);
+        break;
+    }
+
+    case GCODE_INT_CAST: {
+        EVAL1;
+        output->type = GCODE_VAL_INT;
+        output->int_val = gcode_int_cast(&a);
+        break;
+    }
+
+    case GCODE_BOOL_CAST: {
+        EVAL1;
+        output->type = GCODE_VAL_BOOL;
+        output->bool_val = gcode_bool_cast(&a);
+        break;
+    }
+
+    case GCODE_FLOAT_CAST: {
+        EVAL1;
+        output->type = GCODE_VAL_FLOAT;
+        output->float_val = gcode_float_cast(&a);
+        break;
+    }
+
     default:
-        EMIT_ERROR(interp, "Internal: Unknown operator type %d", input->operator);
+        EMIT_ERROR(interp, "Internal: Unknown operator type %d",
+                   input->operator);
         return false;
     }
     return true;
@@ -589,7 +639,7 @@ static bool eval(GCodeInterpreter* interp, const GCodeNode* input,
         if (!lookup(interp, NULL, &key, output))
             return false;
         if (output->type == GCODE_VAL_UNKNOWN) {
-            EMIT_ERROR(interp, "Parameter '%s' not defined", key.str_val);
+            EMIT_ERROR(interp, "Undefined parameter '%s'", key.str_val);
             return false;
         }
         break;

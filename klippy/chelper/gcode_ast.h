@@ -47,7 +47,11 @@ typedef enum gcode_operator_type_t {
     GCODE_NOT,
     GCODE_NEGATE,
     GCODE_IFELSE,
-    GCODE_LOOKUP
+    GCODE_LOOKUP,
+    GCODE_STR_CAST,
+    GCODE_INT_CAST,
+    GCODE_BOOL_CAST,
+    GCODE_FLOAT_CAST
 } gcode_operator_type_t;
 
 // The base "class" for all nodes.  All nodes share a type differentiation and
