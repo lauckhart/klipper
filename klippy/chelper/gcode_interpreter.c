@@ -27,7 +27,7 @@ struct GCodeInterpreter {
 
     bool (*lookup)(void*,  const GCodeVal*, dict_handle_t, GCodeVal*);
     const char* (*serialize)(void*, dict_handle_t);
-    bool (*exec)(void*, const char**, size_t);
+    bool (*exec)(void*, const char*, const char**, size_t);
 };
 
 GCodeInterpreter* gcode_interp_new(
@@ -35,7 +35,7 @@ GCodeInterpreter* gcode_interp_new(
     void (*error)(void*, const GCodeError*),
     bool (*lookup)(void*, const GCodeVal*, dict_handle_t, GCodeVal*),
     const char* (*serialize)(void*, dict_handle_t),
-    bool (*exec)(void*, const char**, size_t))
+    bool (*exec)(void*, const char*, const char**, size_t))
 {
     GCodeInterpreter* interp = malloc(sizeof(GCodeInterpreter));
     if (!interp)
@@ -703,7 +703,7 @@ static inline void exec_statement(GCodeInterpreter* interp,
     reset(interp);
 
     GCodeVal result;
-    for (GCodeNode* n = statement->children; n; n = n->next) {
+    for (GCodeNode* n = statement->args; n; n = n->next) {
         if (!eval(interp, n, &result))
             return;
         const char* str = gcode_str_cast(interp, &result);
@@ -713,7 +713,8 @@ static inline void exec_statement(GCodeInterpreter* interp,
             return;
     }
 
-    interp->exec(interp->context, interp->field_buf, interp->field_count);
+    interp->exec(interp->context, statement->command, interp->field_buf,
+                 interp->field_count);
 }
 
 void gcode_interp_exec(GCodeInterpreter* interp,

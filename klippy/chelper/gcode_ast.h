@@ -75,7 +75,8 @@ typedef struct GCodeStatementNode GCodeStatementNode;
 struct GCodeStatementNode {
     gcode_node_type_t type;
     GCodeStatementNode* next;
-    GCodeNode* children;
+    GCodeNode* args;
+    const char* command;
 };
 
 // A 'parameter" is a variable input value to a G-Code statement.'
@@ -142,17 +143,23 @@ static inline size_t gcode_node_length(const GCodeNode* node) {
 // Create a new statement node.
 //
 // Args:
-//     children - optional list of children; ownership is assumed by the
+//     command - the name of the statement command (e.g. G1)
+//     args - optional list of arguments; ownership is assumed by the
 //         statement.  Each child represents a single word in traditional
 //         G-Code.
 //
 // Returns the new node or NULL if OOM.  Caller assumes ownership.
-static inline GCodeNode* gcode_statement_new(GCodeNode* children) {
-    GCodeStatementNode* n = malloc(sizeof(GCodeStatementNode));
+static inline GCodeNode* gcode_statement_new(const char* command,
+                                             GCodeNode* args)
+{
+    size_t l = strlen(command);
+    GCodeStatementNode* n = malloc(sizeof(GCodeStatementNode) + l + 1);
     if (!n)
         return NULL;
     n->type = GCODE_STATEMENT;
-    n->children = children;
+    n->args = args;
+    n->command = (char*)(n + 1);
+    strncpy((char*)(n + 1), command, l + 1);
     return (GCodeNode*)n;
 }
 

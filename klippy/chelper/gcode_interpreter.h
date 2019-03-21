@@ -58,7 +58,7 @@ typedef struct GCodeInterpreter GCodeInterpreter;
 //         lifetime of the current statement; the char* functions below return
 //         strings that meet this criteria 
 //     serialize - callback for serializing dicts
-//     exec - called for each output line of raw G-Code
+//     exec - called for each G-Code command
 //
 // Returns the new interpreter or NULL on OOM.
 GCodeInterpreter* gcode_interp_new(
@@ -67,7 +67,8 @@ GCodeInterpreter* gcode_interp_new(
     bool (*lookup)(void* context, const GCodeVal* key, dict_handle_t parent,
                    GCodeVal* result),
     const char* (*serialize)(void* context, dict_handle_t dict),
-    bool (*exec)(void* context, const char** fields, size_t count)
+    bool (*exec)(void* context, const char* command, const char** fields,
+                 size_t count)
 );
 
 // Allocate space on the interpreter string buffer.  No memory management is

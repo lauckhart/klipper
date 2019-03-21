@@ -24,7 +24,7 @@ KEYWORD_DEPS = \
 	../gcode_parser.generated.c \
 	gcode_keyword_gen.sh
 
-.DEFAULT_GOAL := out/gcode-cli
+.DEFAULT_GOAL := out/test.result.gcode
 
 ../gcode_parser.generated.c: gcode_parser.y
 	$(BISON) -Wall -v --report-file=out/gcode_parser.output -o $@ $<
@@ -44,7 +44,9 @@ out/%.o: %.c
 	$(CC) -c -o $@ $< $(CFLAGS)
 
 out/gcode-cli: out/depend $(addprefix out/, $(SOURCES:.c=.o))
-	$(CC) -o $@ $(filter-out out/depend, $^) -lm $(CFLAGS) -fsanitize=leak
+
+out/test.result.gcode: out/gcode-cli
+	./test_gcode.sh
 
 clean:
 	rm -f out/*

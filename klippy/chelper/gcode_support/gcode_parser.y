@@ -73,11 +73,13 @@ static inline GCodeNode* newop3(
     return op;
 }
 
-static inline bool add_statement(GCodeParser* parser, GCodeNode* children) {
+static inline bool add_statement(GCodeParser* parser, const char* command,
+                                 GCodeNode* children)
+{
     if (!children)
         return true;
     GCodeStatementNode* statement =
-        (GCodeStatementNode*)gcode_statement_new(children);
+        (GCodeStatementNode*)gcode_statement_new(command, children);
     if (!statement)
         return false;
     parser->statement(parser->context, statement);
@@ -193,8 +195,8 @@ static void yyerror(const GCodeLocation* location, GCodeParser* parser,
 %precedence LBRACKET
 %left BRIDGE
 
-%type <node> statement
-%type <node> field
+%type <node> args
+%type <node> arg
 %type <node> expr
 %type <node> exprs
 %type <node> expr_list
@@ -204,23 +206,24 @@ static void yyerror(const GCodeLocation* location, GCodeParser* parser,
 
 statements:
   %empty
-| save_statement statements
-;
-
-save_statement:
-  statement                 { OOM(add_statement(parser, $statement)); }
-| error
+| statement statements
 ;
 
 statement:
-  END_OF_STATEMENT          { $$ = NULL; }
-| field[a] statement[b]     { $$ = gcode_add_next($a, $b); }
+  STRING[command] args { OOM(add_statement(parser, $command,
+                                           $args)); }
+| error
 ;
 
-field:
+args:
+  END_OF_STATEMENT          { $$ = NULL; }
+| arg[a] arg[b]           { $$ = gcode_add_next($a, $b); }
+;
+
+arg:
   string
 | "{" expr "}"              { $$ = $expr; }
-| field[a] BRIDGE field[b]  { OOM($$ = newop2(GCODE_CONCAT, $a, $b)); }
+| arg[a] BRIDGE arg[b]      { OOM($$ = newop2(GCODE_CONCAT, $a, $b)); }
 ;
 
 expr:

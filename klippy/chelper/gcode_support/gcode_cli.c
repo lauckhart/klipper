@@ -58,12 +58,13 @@ const char* serialize(void* context, dict_handle_t dict) {
     return "";
 }
 
-bool exec(void* context, const char** fields, size_t count) {
-    for (size_t i = 0; i < count; i++)
-        if (i == count - 1)
-            printf("%s\n", fields[i]);
-        else
-            printf("%s ", fields[i]);
+bool exec(void* context, const char* command, const char** args, size_t count) {
+    puts(command);
+    for (size_t i = 0; i < count; i++) {
+        putchar(' ');
+        puts(args[i]);
+    }
+    putchar('\n');
     return true;
 }
 
