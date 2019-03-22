@@ -67,7 +67,6 @@ N1 G1 X0 Y0 ; Comment
 ; Single literal expressions
 
 ; ints
-{0} ; Expr in first field
 int {0} {0b0} {00} {0x0}
 int {10} {0b10} {0x10} {010}
 int {1} {+1} {-1} {++1} {--1} {10} {+10} {-10}
@@ -79,7 +78,7 @@ dec_f {1e2} {1e10} {1E-10} {12.34e56} {12.34e-56} {.1e10} {.12e10} {.12e-10}
 ; Hex floats (who knew?)
 hex_f {0x0.0} {0X1.0} {0x1.1} {0x12.34} {0xab.cd} {+0x1.0} {-0x1.0}
 hex_f {0x1p10} {0x1P-10} {0x12.34p56} {0x12.34p-56}
-hex_f {0xab.cdpef} {0xab.cdp-ef} {0xAb.CdPeF}
+hex_f {0xab.cdp10} {0xab.cdp-56} {0xAb.CdP10}
 
 ; Special floats
 spec_f {nan} {NAN} {NaN}
@@ -191,6 +190,7 @@ param {"foo"["bar"]} ; Error
 
 
 ; Lexer errors (TODO)
+{0} ; Expr in first field
 
 
 ; Parser errors (TODO)

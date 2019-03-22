@@ -298,7 +298,7 @@ static inline int get_keyword_id(GCodeLexer* lexer) {
     return -1;
 }
 
-static inline bool free_token(GCodeLexer* lexer) {
+static inline void free_token(GCodeLexer* lexer) {
     lexer->token_length = 0;
 }
 
@@ -399,6 +399,7 @@ static inline bool emit_float(GCodeLexer* lexer) {
     terminate_token(lexer);
     char* end;
     double value = strtod(lexer->token_str, &end);
+    free_token(lexer);
     if (*end) {
         ERROR("Invalid float %s", lexer->token_str);
         return false;
@@ -595,8 +596,8 @@ void gcode_lexer_scan(GCodeLexer* lexer, const char* buffer, size_t length) {
 
                 default:
                     TOKEN_START;
+                    TOKEN_CHAR(ch);
                     lexer->state = SCAN_ARG;
-                    BACK_UP;
                     break;
             }
             break;
@@ -628,7 +629,7 @@ void gcode_lexer_scan(GCodeLexer* lexer, const char* buffer, size_t length) {
                     break;
 
                 default:
-                    TOKEN_CHAR_UPPER();
+                    TOKEN_CHAR(ch);
                     break;
             }
             break;
@@ -685,6 +686,7 @@ void gcode_lexer_scan(GCodeLexer* lexer, const char* buffer, size_t length) {
 
                 case '.':
                     TOKEN_START;
+                    TOKEN_CHAR(ch);
                     lexer->state = SCAN_DOT;
                     break;
 
@@ -697,10 +699,9 @@ void gcode_lexer_scan(GCodeLexer* lexer, const char* buffer, size_t length) {
                     TOKEN_START;
                     if (ch >= '1' && ch <= '9') {
                         TOKEN_CHAR(ch);
-                        lexer->int_value = 0;
-                        lexer->digit_count = 0;
+                        lexer->int_value = ch - '0';
+                        lexer->digit_count = 1;
                         lexer->state = SCAN_DECIMAL;
-                        BACK_UP;
                     } else if (is_symbol_char(ch)) {
                         lexer->state = SCAN_SYMBOL;
                         TOKEN_CHAR(ch);
@@ -749,6 +750,7 @@ void gcode_lexer_scan(GCodeLexer* lexer, const char* buffer, size_t length) {
                 if (!emit_keyword_or_identifier(lexer))
                     break;
                 if (ch == '.') {
+                    TOKEN_CHAR(ch);
                     lexer->state = SCAN_DOT;
                     break;
                 } else
@@ -1039,9 +1041,7 @@ void gcode_lexer_scan(GCodeLexer* lexer, const char* buffer, size_t length) {
             if (ch >= '0' && ch <= '9') {
                 TOKEN_CHAR(ch);
                 lexer->state = SCAN_DECIMAL_FRACTION;
-                BACK_UP;
             } else {
-                TOKEN_CHAR('.');
                 if (!emit_symbol(lexer))
                     break;
                 lexer->state = SCAN_EXPR;
@@ -1206,6 +1206,8 @@ void gcode_lexer_reset(GCodeLexer* lexer) {
 }
 
 void gcode_lexer_delete(GCodeLexer* lexer) {
+    if (!lexer)
+        return;
     gcode_error_delete(lexer->error);
     free(lexer->token_str);
     free(lexer);

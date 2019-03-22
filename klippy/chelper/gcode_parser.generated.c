@@ -141,8 +141,6 @@ static inline GCodeNode* newop3(
 static inline bool add_statement(GCodeParser* parser, const char* command,
                                  GCodeNode* children)
 {
-    if (!children)
-        return true;
     GCodeStatementNode* statement =
         (GCodeStatementNode*)gcode_statement_new(command, children);
     if (!statement)
@@ -162,7 +160,6 @@ static void out_of_memory(GCodeParser* parser) {
 
 typedef GCodeLocation YYLTYPE;
 #define YYLTYPE_IS_DECLARED
-#define YYLLOC_DEFAULT
 
 static void yyerror(const GCodeLocation* location, GCodeParser* parser,
                     const char* msg)
@@ -176,7 +173,7 @@ static void yyerror(const GCodeLocation* location, GCodeParser* parser,
 }
 
 
-#line 180 "../gcode_parser.generated.c" /* yacc.c:339  */
+#line 177 "../gcode_parser.generated.c" /* yacc.c:339  */
 
 # ifndef YY_NULLPTR
 #  if defined __cplusplus && 201103L <= __cplusplus
@@ -258,7 +255,7 @@ extern int yydebug;
 
 union YYSTYPE
 {
-#line 123 "gcode_parser.y" /* yacc.c:355  */
+#line 120 "gcode_parser.y" /* yacc.c:355  */
 
     int keyword;
     int64_t int_value;
@@ -266,7 +263,7 @@ union YYSTYPE
     char* str;
     GCodeNode* node;
 
-#line 270 "../gcode_parser.generated.c" /* yacc.c:355  */
+#line 267 "../gcode_parser.generated.c" /* yacc.c:355  */
 };
 
 typedef union YYSTYPE YYSTYPE;
@@ -306,7 +303,7 @@ void yypstate_delete (yypstate *ps);
 
 /* Copy the second part of user declarations.  */
 
-#line 310 "../gcode_parser.generated.c" /* yacc.c:358  */
+#line 307 "../gcode_parser.generated.c" /* yacc.c:358  */
 
 #ifdef short
 # undef short
@@ -585,11 +582,11 @@ static const yytype_uint8 yytranslate[] =
   /* YYRLINE[YYN] -- Source line where rule number YYN was defined.  */
 static const yytype_uint16 yyrline[] =
 {
-       0,   208,   208,   209,   213,   215,   219,   220,   224,   225,
-     226,   230,   231,   232,   233,   234,   235,   236,   237,   238,
-     239,   240,   241,   242,   243,   244,   245,   246,   247,   248,
-     249,   250,   251,   252,   253,   254,   255,   256,   259,   260,
-     262,   263,   264,   265,   266,   271,   275,   276,   280,   281
+       0,   205,   205,   206,   210,   212,   216,   217,   221,   222,
+     223,   227,   228,   229,   230,   231,   232,   233,   234,   235,
+     236,   237,   238,   239,   240,   241,   242,   243,   244,   245,
+     246,   247,   248,   249,   250,   251,   252,   253,   256,   257,
+     259,   260,   261,   262,   263,   268,   272,   273,   277,   278
 };
 #endif
 
@@ -622,10 +619,10 @@ static const yytype_uint16 yytoknum[] =
 };
 # endif
 
-#define YYPACT_NINF -27
+#define YYPACT_NINF -25
 
 #define yypact_value_is_default(Yystate) \
-  (!!((Yystate) == (-27)))
+  (!!((Yystate) == (-25)))
 
 #define YYTABLE_NINF -3
 
@@ -636,16 +633,16 @@ static const yytype_uint16 yytoknum[] =
      STATE-NUM.  */
 static const yytype_int16 yypact[] =
 {
-      17,   -27,    18,     2,    17,   -27,   -27,    48,   -27,    12,
-     -27,   -27,   -27,   -26,   -27,   -27,    48,    48,    48,    48,
-     -27,   -27,   -27,   -27,   -22,   -10,    -9,    -3,    81,   -27,
-      20,   -16,    48,   -21,   -21,   -21,   137,    48,    48,    48,
+       3,   -25,    18,     2,     3,   -25,   -25,    48,   -25,    12,
+     -25,   -25,   -25,   -11,   -25,   -25,    48,    48,    48,    48,
+     -25,   -25,   -25,   -25,   -10,    -9,    -4,    -3,    81,   -25,
+      20,   -25,    48,   -21,   -21,   -21,   137,    48,    48,    48,
       48,    48,    48,    48,    48,    48,    48,    48,    48,    48,
-      48,    48,    48,    48,    48,    48,    55,    48,   -27,   -27,
-     163,    29,   -27,   -27,   189,   215,   241,   267,   318,   342,
+      48,    48,    48,    48,    48,    48,    14,    48,   -25,   -25,
+     163,    -2,   -25,   -25,   189,   215,   241,   267,   318,   342,
      365,   387,   407,   407,   416,   -21,   416,   416,   -12,   -12,
-     -12,   -12,   293,   -27,   110,    48,   -27,   -27,   -27,   -27,
-     -27,    48,   -27,   -27,   -12
+     -12,   -12,   293,   -25,   110,    48,   -25,   -25,   -25,   -25,
+     -25,    48,   -25,   -25,   -12
 };
 
   /* YYDEFACT[STATE-NUM] -- Default reduction number in state STATE-NUM.
@@ -668,7 +665,7 @@ static const yytype_uint8 yydefact[] =
   /* YYPGOTO[NTERM-NUM].  */
 static const yytype_int8 yypgoto[] =
 {
-     -27,    56,   -27,   -27,    -5,    -7,    -1,   -27,   -24
+     -25,    54,   -25,    50,    30,    -7,    -1,   -25,   -24
 };
 
   /* YYDEFGOTO[NTERM-NUM].  */
@@ -682,13 +679,13 @@ static const yytype_int8 yydefgoto[] =
      number is the opposite.  If YYTABLE_NINF, syntax error.  */
 static const yytype_int8 yytable[] =
 {
-      28,    10,    11,    32,    31,    48,    56,    37,    10,    33,
-      34,    35,    36,    55,    57,    56,     5,    -2,     1,    38,
-      39,     2,     5,    57,     5,    59,    40,     6,    30,    10,
+      28,    10,    11,    -2,     1,    48,    56,     2,    10,    33,
+      34,    35,    36,    55,    57,    56,     5,    83,    32,    37,
+      38,     6,     5,    57,     5,    39,    40,     6,    86,    10,
       64,    65,    66,    67,    68,    69,    70,    71,    72,    73,
       74,    75,    76,    77,    78,    79,    80,    81,    82,     7,
-      84,    13,     5,    14,    15,     7,    30,     7,    83,    86,
-      12,    93,    16,    17,     0,     0,     0,     0,     0,     0,
+      84,    13,     5,    14,    15,     7,    30,     7,    12,    31,
+      59,    93,    16,    17,     0,     0,     0,     0,     0,     0,
        0,     0,    18,     0,     0,     0,     0,    19,     0,    20,
       21,    22,    23,     0,    94,     0,     0,    24,    25,    26,
       27,    41,    42,    43,    44,    45,    46,    47,    48,    49,
@@ -732,13 +729,13 @@ static const yytype_int8 yytable[] =
 
 static const yytype_int8 yycheck[] =
 {
-       7,     2,     0,    29,     9,    17,    27,    29,     9,    16,
-      17,    18,    19,    25,    35,    27,     4,     0,     1,    29,
-      29,     4,     4,    35,     4,    30,    29,     9,    44,    30,
+       7,     2,     0,     0,     1,    17,    27,     4,     9,    16,
+      17,    18,    19,    25,    35,    27,     4,     3,    29,    29,
+      29,     9,     4,    35,     4,    29,    29,     9,    30,    30,
       37,    38,    39,    40,    41,    42,    43,    44,    45,    46,
       47,    48,    49,    50,    51,    52,    53,    54,    55,    37,
-      57,     3,     4,     5,     6,    37,    44,    37,     3,    30,
-       4,    85,    14,    15,    -1,    -1,    -1,    -1,    -1,    -1,
+      57,     3,     4,     5,     6,    37,    44,    37,     4,     9,
+      30,    85,    14,    15,    -1,    -1,    -1,    -1,    -1,    -1,
       -1,    -1,    24,    -1,    -1,    -1,    -1,    29,    -1,    31,
       32,    33,    34,    -1,    91,    -1,    -1,    39,    40,    41,
       42,    10,    11,    12,    13,    14,    15,    16,    17,    18,
@@ -787,7 +784,7 @@ static const yytype_uint8 yystos[] =
        0,     1,     4,    46,    47,     4,     9,    37,    48,    49,
       51,     0,    46,     3,     5,     6,    14,    15,    24,    29,
       31,    32,    33,    34,    39,    40,    41,    42,    50,    51,
-      44,    49,    29,    50,    50,    50,    50,    29,    29,    29,
+      44,    48,    29,    50,    50,    50,    50,    29,    29,    29,
       29,    10,    11,    12,    13,    14,    15,    16,    17,    18,
       19,    20,    21,    22,    23,    25,    27,    35,    38,    49,
       50,    52,    53,    30,    50,    50,    50,    50,    50,    50,
@@ -1308,51 +1305,51 @@ yydestruct (const char *yymsg, int yytype, YYSTYPE *yyvaluep, YYLTYPE *yylocatio
   switch (yytype)
     {
           case 3: /* IDENTIFIER  */
-#line 131 "gcode_parser.y" /* yacc.c:1257  */
+#line 128 "gcode_parser.y" /* yacc.c:1257  */
       { free(((*yyvaluep).str)); }
-#line 1314 "../gcode_parser.generated.c" /* yacc.c:1257  */
+#line 1311 "../gcode_parser.generated.c" /* yacc.c:1257  */
         break;
 
     case 4: /* STRING  */
-#line 131 "gcode_parser.y" /* yacc.c:1257  */
+#line 128 "gcode_parser.y" /* yacc.c:1257  */
       { free(((*yyvaluep).str)); }
-#line 1320 "../gcode_parser.generated.c" /* yacc.c:1257  */
+#line 1317 "../gcode_parser.generated.c" /* yacc.c:1257  */
         break;
 
     case 48: /* args  */
-#line 132 "gcode_parser.y" /* yacc.c:1257  */
+#line 129 "gcode_parser.y" /* yacc.c:1257  */
       { gcode_node_delete(((*yyvaluep).node)); }
-#line 1326 "../gcode_parser.generated.c" /* yacc.c:1257  */
+#line 1323 "../gcode_parser.generated.c" /* yacc.c:1257  */
         break;
 
     case 49: /* arg  */
-#line 132 "gcode_parser.y" /* yacc.c:1257  */
+#line 129 "gcode_parser.y" /* yacc.c:1257  */
       { gcode_node_delete(((*yyvaluep).node)); }
-#line 1332 "../gcode_parser.generated.c" /* yacc.c:1257  */
+#line 1329 "../gcode_parser.generated.c" /* yacc.c:1257  */
         break;
 
     case 50: /* expr  */
-#line 132 "gcode_parser.y" /* yacc.c:1257  */
+#line 129 "gcode_parser.y" /* yacc.c:1257  */
       { gcode_node_delete(((*yyvaluep).node)); }
-#line 1338 "../gcode_parser.generated.c" /* yacc.c:1257  */
+#line 1335 "../gcode_parser.generated.c" /* yacc.c:1257  */
         break;
 
     case 51: /* string  */
-#line 132 "gcode_parser.y" /* yacc.c:1257  */
+#line 129 "gcode_parser.y" /* yacc.c:1257  */
       { gcode_node_delete(((*yyvaluep).node)); }
-#line 1344 "../gcode_parser.generated.c" /* yacc.c:1257  */
+#line 1341 "../gcode_parser.generated.c" /* yacc.c:1257  */
         break;
 
     case 52: /* exprs  */
-#line 132 "gcode_parser.y" /* yacc.c:1257  */
+#line 129 "gcode_parser.y" /* yacc.c:1257  */
       { gcode_node_delete(((*yyvaluep).node)); }
-#line 1350 "../gcode_parser.generated.c" /* yacc.c:1257  */
+#line 1347 "../gcode_parser.generated.c" /* yacc.c:1257  */
         break;
 
     case 53: /* expr_list  */
-#line 132 "gcode_parser.y" /* yacc.c:1257  */
+#line 129 "gcode_parser.y" /* yacc.c:1257  */
       { gcode_node_delete(((*yyvaluep).node)); }
-#line 1356 "../gcode_parser.generated.c" /* yacc.c:1257  */
+#line 1353 "../gcode_parser.generated.c" /* yacc.c:1257  */
         break;
 
 
@@ -1707,256 +1704,256 @@ yyreduce:
   switch (yyn)
     {
         case 4:
-#line 213 "gcode_parser.y" /* yacc.c:1646  */
-    { OOM(add_statement(parser, (yyvsp[-1].str),
-                                           (yyvsp[0].node))); }
-#line 1714 "../gcode_parser.generated.c" /* yacc.c:1646  */
+#line 210 "gcode_parser.y" /* yacc.c:1646  */
+    { OOM(add_statement(parser, (yyvsp[-1].str), (yyvsp[0].node)));
+                         free((yyvsp[-1].str)); }
+#line 1711 "../gcode_parser.generated.c" /* yacc.c:1646  */
     break;
 
   case 6:
-#line 219 "gcode_parser.y" /* yacc.c:1646  */
+#line 216 "gcode_parser.y" /* yacc.c:1646  */
     { (yyval.node) = NULL; }
-#line 1720 "../gcode_parser.generated.c" /* yacc.c:1646  */
+#line 1717 "../gcode_parser.generated.c" /* yacc.c:1646  */
     break;
 
   case 7:
-#line 220 "gcode_parser.y" /* yacc.c:1646  */
+#line 217 "gcode_parser.y" /* yacc.c:1646  */
     { (yyval.node) = gcode_add_next((yyvsp[-1].node), (yyvsp[0].node)); }
-#line 1726 "../gcode_parser.generated.c" /* yacc.c:1646  */
+#line 1723 "../gcode_parser.generated.c" /* yacc.c:1646  */
     break;
 
   case 9:
-#line 225 "gcode_parser.y" /* yacc.c:1646  */
+#line 222 "gcode_parser.y" /* yacc.c:1646  */
     { (yyval.node) = (yyvsp[-1].node); }
-#line 1732 "../gcode_parser.generated.c" /* yacc.c:1646  */
+#line 1729 "../gcode_parser.generated.c" /* yacc.c:1646  */
     break;
 
   case 10:
-#line 226 "gcode_parser.y" /* yacc.c:1646  */
+#line 223 "gcode_parser.y" /* yacc.c:1646  */
     { OOM((yyval.node) = newop2(GCODE_CONCAT, (yyvsp[-2].node), (yyvsp[0].node))); }
-#line 1738 "../gcode_parser.generated.c" /* yacc.c:1646  */
+#line 1735 "../gcode_parser.generated.c" /* yacc.c:1646  */
     break;
 
   case 11:
-#line 230 "gcode_parser.y" /* yacc.c:1646  */
+#line 227 "gcode_parser.y" /* yacc.c:1646  */
     { (yyval.node) = (yyvsp[-1].node); }
-#line 1744 "../gcode_parser.generated.c" /* yacc.c:1646  */
+#line 1741 "../gcode_parser.generated.c" /* yacc.c:1646  */
     break;
 
   case 13:
-#line 232 "gcode_parser.y" /* yacc.c:1646  */
+#line 229 "gcode_parser.y" /* yacc.c:1646  */
     { (yyval.node) = gcode_parameter_new((yyvsp[0].str)); free((yyvsp[0].str)); OOM((yyval.node)) }
-#line 1750 "../gcode_parser.generated.c" /* yacc.c:1646  */
+#line 1747 "../gcode_parser.generated.c" /* yacc.c:1646  */
     break;
 
   case 14:
-#line 233 "gcode_parser.y" /* yacc.c:1646  */
+#line 230 "gcode_parser.y" /* yacc.c:1646  */
     { OOM((yyval.node) = gcode_int_new((yyvsp[0].int_value))); }
-#line 1756 "../gcode_parser.generated.c" /* yacc.c:1646  */
+#line 1753 "../gcode_parser.generated.c" /* yacc.c:1646  */
     break;
 
   case 15:
-#line 234 "gcode_parser.y" /* yacc.c:1646  */
+#line 231 "gcode_parser.y" /* yacc.c:1646  */
     { OOM((yyval.node) = gcode_float_new((yyvsp[0].float_value))); }
-#line 1762 "../gcode_parser.generated.c" /* yacc.c:1646  */
+#line 1759 "../gcode_parser.generated.c" /* yacc.c:1646  */
     break;
 
   case 16:
-#line 235 "gcode_parser.y" /* yacc.c:1646  */
+#line 232 "gcode_parser.y" /* yacc.c:1646  */
     { OOM((yyval.node) = gcode_bool_new(true)); }
-#line 1768 "../gcode_parser.generated.c" /* yacc.c:1646  */
+#line 1765 "../gcode_parser.generated.c" /* yacc.c:1646  */
     break;
 
   case 17:
-#line 236 "gcode_parser.y" /* yacc.c:1646  */
+#line 233 "gcode_parser.y" /* yacc.c:1646  */
     { OOM((yyval.node) = gcode_bool_new(false)); }
-#line 1774 "../gcode_parser.generated.c" /* yacc.c:1646  */
+#line 1771 "../gcode_parser.generated.c" /* yacc.c:1646  */
     break;
 
   case 18:
-#line 237 "gcode_parser.y" /* yacc.c:1646  */
+#line 234 "gcode_parser.y" /* yacc.c:1646  */
     { OOM((yyval.node) = gcode_float_new(INFINITY)); }
-#line 1780 "../gcode_parser.generated.c" /* yacc.c:1646  */
+#line 1777 "../gcode_parser.generated.c" /* yacc.c:1646  */
     break;
 
   case 19:
-#line 238 "gcode_parser.y" /* yacc.c:1646  */
+#line 235 "gcode_parser.y" /* yacc.c:1646  */
     { OOM((yyval.node) = gcode_float_new(NAN)); }
-#line 1786 "../gcode_parser.generated.c" /* yacc.c:1646  */
+#line 1783 "../gcode_parser.generated.c" /* yacc.c:1646  */
     break;
 
   case 20:
-#line 239 "gcode_parser.y" /* yacc.c:1646  */
+#line 236 "gcode_parser.y" /* yacc.c:1646  */
     { OOM((yyval.node) = newop1(GCODE_NOT, (yyvsp[0].node))); }
-#line 1792 "../gcode_parser.generated.c" /* yacc.c:1646  */
+#line 1789 "../gcode_parser.generated.c" /* yacc.c:1646  */
     break;
 
   case 21:
-#line 240 "gcode_parser.y" /* yacc.c:1646  */
+#line 237 "gcode_parser.y" /* yacc.c:1646  */
     { OOM((yyval.node) = newop1(GCODE_NEGATE, (yyvsp[0].node))); }
-#line 1798 "../gcode_parser.generated.c" /* yacc.c:1646  */
+#line 1795 "../gcode_parser.generated.c" /* yacc.c:1646  */
     break;
 
   case 22:
-#line 241 "gcode_parser.y" /* yacc.c:1646  */
+#line 238 "gcode_parser.y" /* yacc.c:1646  */
     { OOM((yyval.node) = (yyvsp[0].node)); }
-#line 1804 "../gcode_parser.generated.c" /* yacc.c:1646  */
+#line 1801 "../gcode_parser.generated.c" /* yacc.c:1646  */
     break;
 
   case 23:
-#line 242 "gcode_parser.y" /* yacc.c:1646  */
+#line 239 "gcode_parser.y" /* yacc.c:1646  */
     { OOM((yyval.node) = newop2(GCODE_ADD, (yyvsp[-2].node), (yyvsp[0].node))); }
-#line 1810 "../gcode_parser.generated.c" /* yacc.c:1646  */
+#line 1807 "../gcode_parser.generated.c" /* yacc.c:1646  */
     break;
 
   case 24:
-#line 243 "gcode_parser.y" /* yacc.c:1646  */
+#line 240 "gcode_parser.y" /* yacc.c:1646  */
     { OOM((yyval.node) = newop2(GCODE_SUBTRACT, (yyvsp[-2].node), (yyvsp[0].node))); }
-#line 1816 "../gcode_parser.generated.c" /* yacc.c:1646  */
+#line 1813 "../gcode_parser.generated.c" /* yacc.c:1646  */
     break;
 
   case 25:
-#line 244 "gcode_parser.y" /* yacc.c:1646  */
+#line 241 "gcode_parser.y" /* yacc.c:1646  */
     { OOM((yyval.node) = newop2(GCODE_MULTIPLY, (yyvsp[-2].node), (yyvsp[0].node))); }
-#line 1822 "../gcode_parser.generated.c" /* yacc.c:1646  */
+#line 1819 "../gcode_parser.generated.c" /* yacc.c:1646  */
     break;
 
   case 26:
-#line 245 "gcode_parser.y" /* yacc.c:1646  */
+#line 242 "gcode_parser.y" /* yacc.c:1646  */
     { OOM((yyval.node) = newop2(GCODE_DIVIDE, (yyvsp[-2].node), (yyvsp[0].node))); }
-#line 1828 "../gcode_parser.generated.c" /* yacc.c:1646  */
+#line 1825 "../gcode_parser.generated.c" /* yacc.c:1646  */
     break;
 
   case 27:
-#line 246 "gcode_parser.y" /* yacc.c:1646  */
+#line 243 "gcode_parser.y" /* yacc.c:1646  */
     { OOM((yyval.node) = newop2(GCODE_MODULUS, (yyvsp[-2].node), (yyvsp[0].node))); }
-#line 1834 "../gcode_parser.generated.c" /* yacc.c:1646  */
+#line 1831 "../gcode_parser.generated.c" /* yacc.c:1646  */
     break;
 
   case 28:
-#line 247 "gcode_parser.y" /* yacc.c:1646  */
+#line 244 "gcode_parser.y" /* yacc.c:1646  */
     { OOM((yyval.node) = newop2(GCODE_POWER, (yyvsp[-2].node), (yyvsp[0].node))); }
-#line 1840 "../gcode_parser.generated.c" /* yacc.c:1646  */
+#line 1837 "../gcode_parser.generated.c" /* yacc.c:1646  */
     break;
 
   case 29:
-#line 248 "gcode_parser.y" /* yacc.c:1646  */
+#line 245 "gcode_parser.y" /* yacc.c:1646  */
     { OOM((yyval.node) = newop2(GCODE_AND, (yyvsp[-2].node), (yyvsp[0].node))); }
-#line 1846 "../gcode_parser.generated.c" /* yacc.c:1646  */
+#line 1843 "../gcode_parser.generated.c" /* yacc.c:1646  */
     break;
 
   case 30:
-#line 249 "gcode_parser.y" /* yacc.c:1646  */
+#line 246 "gcode_parser.y" /* yacc.c:1646  */
     { OOM((yyval.node) = newop2(GCODE_OR, (yyvsp[-2].node), (yyvsp[0].node))); }
-#line 1852 "../gcode_parser.generated.c" /* yacc.c:1646  */
+#line 1849 "../gcode_parser.generated.c" /* yacc.c:1646  */
     break;
 
   case 31:
-#line 250 "gcode_parser.y" /* yacc.c:1646  */
+#line 247 "gcode_parser.y" /* yacc.c:1646  */
     { OOM((yyval.node) = newop2(GCODE_LT, (yyvsp[-2].node), (yyvsp[0].node))); }
-#line 1858 "../gcode_parser.generated.c" /* yacc.c:1646  */
+#line 1855 "../gcode_parser.generated.c" /* yacc.c:1646  */
     break;
 
   case 32:
-#line 251 "gcode_parser.y" /* yacc.c:1646  */
+#line 248 "gcode_parser.y" /* yacc.c:1646  */
     { OOM((yyval.node) = newop2(GCODE_GT, (yyvsp[-2].node), (yyvsp[0].node))); }
-#line 1864 "../gcode_parser.generated.c" /* yacc.c:1646  */
+#line 1861 "../gcode_parser.generated.c" /* yacc.c:1646  */
     break;
 
   case 33:
-#line 252 "gcode_parser.y" /* yacc.c:1646  */
+#line 249 "gcode_parser.y" /* yacc.c:1646  */
     { OOM((yyval.node) = newop2(GCODE_GTE, (yyvsp[-2].node), (yyvsp[0].node))); }
-#line 1870 "../gcode_parser.generated.c" /* yacc.c:1646  */
+#line 1867 "../gcode_parser.generated.c" /* yacc.c:1646  */
     break;
 
   case 34:
-#line 253 "gcode_parser.y" /* yacc.c:1646  */
+#line 250 "gcode_parser.y" /* yacc.c:1646  */
     { OOM((yyval.node) = newop2(GCODE_LTE, (yyvsp[-2].node), (yyvsp[0].node))); }
-#line 1876 "../gcode_parser.generated.c" /* yacc.c:1646  */
+#line 1873 "../gcode_parser.generated.c" /* yacc.c:1646  */
     break;
 
   case 35:
-#line 254 "gcode_parser.y" /* yacc.c:1646  */
+#line 251 "gcode_parser.y" /* yacc.c:1646  */
     { OOM((yyval.node) = newop2(GCODE_CONCAT, (yyvsp[-2].node), (yyvsp[0].node))); }
-#line 1882 "../gcode_parser.generated.c" /* yacc.c:1646  */
+#line 1879 "../gcode_parser.generated.c" /* yacc.c:1646  */
     break;
 
   case 36:
-#line 255 "gcode_parser.y" /* yacc.c:1646  */
+#line 252 "gcode_parser.y" /* yacc.c:1646  */
     { OOM((yyval.node) = newop2(GCODE_EQUALS, (yyvsp[-2].node), (yyvsp[0].node))); }
-#line 1888 "../gcode_parser.generated.c" /* yacc.c:1646  */
+#line 1885 "../gcode_parser.generated.c" /* yacc.c:1646  */
     break;
 
   case 37:
-#line 256 "gcode_parser.y" /* yacc.c:1646  */
+#line 253 "gcode_parser.y" /* yacc.c:1646  */
     { (yyval.node) = newop2(GCODE_LOOKUP, (yyvsp[-2].node), gcode_str_new((yyvsp[0].str)));
                               free((yyvsp[0].str));
                               OOM((yyval.node)); }
-#line 1896 "../gcode_parser.generated.c" /* yacc.c:1646  */
+#line 1893 "../gcode_parser.generated.c" /* yacc.c:1646  */
     break;
 
   case 38:
-#line 259 "gcode_parser.y" /* yacc.c:1646  */
+#line 256 "gcode_parser.y" /* yacc.c:1646  */
     { OOM((yyval.node) = newop2(GCODE_LOOKUP, (yyvsp[-3].node), (yyvsp[-1].node))); }
-#line 1902 "../gcode_parser.generated.c" /* yacc.c:1646  */
+#line 1899 "../gcode_parser.generated.c" /* yacc.c:1646  */
     break;
 
   case 39:
-#line 261 "gcode_parser.y" /* yacc.c:1646  */
+#line 258 "gcode_parser.y" /* yacc.c:1646  */
     { OOM((yyval.node) = newop3(GCODE_IFELSE, (yyvsp[-4].node), (yyvsp[-2].node), (yyvsp[0].node))); }
-#line 1908 "../gcode_parser.generated.c" /* yacc.c:1646  */
+#line 1905 "../gcode_parser.generated.c" /* yacc.c:1646  */
     break;
 
   case 40:
-#line 262 "gcode_parser.y" /* yacc.c:1646  */
+#line 259 "gcode_parser.y" /* yacc.c:1646  */
     { OOM((yyval.node) = newop1(GCODE_STR_CAST, (yyvsp[-1].node)))}
-#line 1914 "../gcode_parser.generated.c" /* yacc.c:1646  */
+#line 1911 "../gcode_parser.generated.c" /* yacc.c:1646  */
     break;
 
   case 41:
-#line 263 "gcode_parser.y" /* yacc.c:1646  */
+#line 260 "gcode_parser.y" /* yacc.c:1646  */
     { OOM((yyval.node) = newop1(GCODE_INT_CAST, (yyvsp[-1].node)))}
-#line 1920 "../gcode_parser.generated.c" /* yacc.c:1646  */
+#line 1917 "../gcode_parser.generated.c" /* yacc.c:1646  */
     break;
 
   case 42:
-#line 264 "gcode_parser.y" /* yacc.c:1646  */
+#line 261 "gcode_parser.y" /* yacc.c:1646  */
     { OOM((yyval.node) = newop1(GCODE_BOOL_CAST, (yyvsp[-1].node)))}
-#line 1926 "../gcode_parser.generated.c" /* yacc.c:1646  */
+#line 1923 "../gcode_parser.generated.c" /* yacc.c:1646  */
     break;
 
   case 43:
-#line 265 "gcode_parser.y" /* yacc.c:1646  */
+#line 262 "gcode_parser.y" /* yacc.c:1646  */
     { OOM((yyval.node) = newop1(GCODE_FLOAT_CAST, (yyvsp[-1].node)))}
-#line 1932 "../gcode_parser.generated.c" /* yacc.c:1646  */
+#line 1929 "../gcode_parser.generated.c" /* yacc.c:1646  */
     break;
 
   case 44:
-#line 267 "gcode_parser.y" /* yacc.c:1646  */
+#line 264 "gcode_parser.y" /* yacc.c:1646  */
     { OOM((yyval.node) = gcode_function_new((yyvsp[-3].str), (yyvsp[-1].node))); }
-#line 1938 "../gcode_parser.generated.c" /* yacc.c:1646  */
+#line 1935 "../gcode_parser.generated.c" /* yacc.c:1646  */
     break;
 
   case 45:
-#line 271 "gcode_parser.y" /* yacc.c:1646  */
+#line 268 "gcode_parser.y" /* yacc.c:1646  */
     { (yyval.node) = gcode_str_new((yyvsp[0].str)); free((yyvsp[0].str)); OOM((yyval.node)); }
-#line 1944 "../gcode_parser.generated.c" /* yacc.c:1646  */
+#line 1941 "../gcode_parser.generated.c" /* yacc.c:1646  */
     break;
 
   case 46:
-#line 275 "gcode_parser.y" /* yacc.c:1646  */
+#line 272 "gcode_parser.y" /* yacc.c:1646  */
     { (yyval.node) = NULL; }
-#line 1950 "../gcode_parser.generated.c" /* yacc.c:1646  */
+#line 1947 "../gcode_parser.generated.c" /* yacc.c:1646  */
     break;
 
   case 49:
-#line 281 "gcode_parser.y" /* yacc.c:1646  */
+#line 278 "gcode_parser.y" /* yacc.c:1646  */
     { (yyval.node) = (yyvsp[-2].node); gcode_add_next((yyvsp[-2].node), (yyvsp[0].node)); }
-#line 1956 "../gcode_parser.generated.c" /* yacc.c:1646  */
+#line 1953 "../gcode_parser.generated.c" /* yacc.c:1646  */
     break;
 
 
-#line 1960 "../gcode_parser.generated.c" /* yacc.c:1646  */
+#line 1957 "../gcode_parser.generated.c" /* yacc.c:1646  */
       default: break;
     }
   /* User semantic actions sometimes alter yychar, and that requires
@@ -2194,7 +2191,7 @@ yypushreturn:
 #endif
   return yyresult;
 }
-#line 284 "gcode_parser.y" /* yacc.c:1906  */
+#line 281 "gcode_parser.y" /* yacc.c:1906  */
 
 
 static void push_error(GCodeParser* parser) {
@@ -2242,10 +2239,12 @@ static inline bool push_string(void* context, int id, const char* value) {
 
 static bool lex_identifier(void* context, const char* name) {
     push_string(context, TOK_IDENTIFIER, name);
+    return true;
 }
 
 static bool lex_string_literal(void* context, const char* value) {
     push_string(context, TOK_STRING, value);
+    return true;
 }
 
 static bool lex_int_literal(void* context, int64_t value) {
@@ -2332,6 +2331,8 @@ void gcode_parser_finish(GCodeParser* parser) {
 }
 
 void gcode_parser_delete(GCodeParser* parser) {
+    if (!parser)
+        return;
     gcode_lexer_delete(parser->lexer);
     gcode_error_delete(parser->error);
     if (parser->yyps)

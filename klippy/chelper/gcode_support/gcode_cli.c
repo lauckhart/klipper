@@ -59,16 +59,18 @@ const char* serialize(void* context, dict_handle_t dict) {
 }
 
 bool exec(void* context, const char* command, const char** args, size_t count) {
-    puts(command);
+    fputs(command, stdout);
     for (size_t i = 0; i < count; i++) {
         putchar(' ');
-        puts(args[i]);
+        fputs(args[i], stdout);
     }
     putchar('\n');
     return true;
 }
 
 void cli_delete(CLI* cli) {
+    if (!cli)
+        return;
     if (cli->input)
         fclose(cli->input);
     gcode_parser_delete(cli->parser);

@@ -98,6 +98,8 @@ const char* gcode_error_get(const GCodeError* error) {
 }
 
 void gcode_error_delete(GCodeError* error) {
+    if (!error)
+        return;
     free(error->buffer);
     free(error);
 }

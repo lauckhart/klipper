@@ -59,6 +59,8 @@ GCodeInterpreter* gcode_interp_new(
     interp->str_buf = NULL;
     interp->str_length = 0;
     interp->str_limit = 0;
+
+    return interp;
 }
 
 static bool str_expand(GCodeInterpreter* interp, size_t size) {
@@ -338,12 +340,11 @@ static bool compare(GCodeInterpreter* interp, GCodeVal* a, GCodeVal* b,
 
 #define BINARY_NUM_OP(int_case, float_case) \
     EVAL2 \
-    switch (force_to_num2(&a, &b)) { \
-    case GCODE_VAL_INT: \
+    if (force_to_num2(&a, &b) == GCODE_VAL_INT) { \
         output->type = GCODE_VAL_INT; \
         output->int_val = int_case; \
         break; \
-    case GCODE_VAL_FLOAT: \
+    } else { \
         output->type = GCODE_VAL_FLOAT; \
         output->float_val = float_case; \
         break; \
@@ -382,22 +383,18 @@ static inline gcode_val_type_t force_to_num(GCodeVal* val) {
 
 static inline gcode_val_type_t force_to_num2(GCodeVal* a, GCodeVal* b) {
     force_to_num(a);
-    switch (force_to_num(b)) {
-    case GCODE_VAL_INT:
+    if (force_to_num(b) == GCODE_VAL_INT) {
         if (a->type == GCODE_VAL_FLOAT) {
             b->type = GCODE_VAL_FLOAT;
             b->float_val = b->int_val;
         }
-        break;
-
-    case GCODE_VAL_FLOAT:
-        if (a->type == GCODE_VAL_INT) {
-            a->type = GCODE_VAL_FLOAT;
-            a->float_val = a->float_val;
-        }
-        break;
+        return GCODE_VAL_INT;
     }
-    return a->type;
+    if (a->type == GCODE_VAL_INT) {
+        a->type = GCODE_VAL_FLOAT;
+        a->float_val = a->float_val;
+    }
+    return GCODE_VAL_FLOAT;
 }
 
 static inline bool eval_operator(GCodeInterpreter* interp,
@@ -488,8 +485,7 @@ static inline bool eval_operator(GCodeInterpreter* interp,
 
     case GCODE_DIVIDE: {
         EVAL2
-        switch (force_to_num2(&a, &b)) {
-        case GCODE_VAL_INT:
+        if (force_to_num2(&a, &b) == GCODE_VAL_INT) {
             if (b.int_val == 0) {
                 output->type = GCODE_VAL_FLOAT;
                 output->float_val = NAN;
@@ -497,8 +493,7 @@ static inline bool eval_operator(GCodeInterpreter* interp,
                 output->type = GCODE_VAL_INT;
                 output->int_val = a.int_val / b.int_val;
             }
-            break;
-        case GCODE_VAL_FLOAT:
+        } else {
             output->type = GCODE_VAL_FLOAT;
             if (b.float_val == 0)
                 output->float_val = NAN;
@@ -545,15 +540,10 @@ static inline bool eval_operator(GCodeInterpreter* interp,
 
     case GCODE_NEGATE: {
         EVALN(child, output);
-        switch (force_to_num(output)) {
-            case GCODE_VAL_INT:
-                output->int_val = -output->int_val;
-                break;
-
-            case GCODE_VAL_FLOAT:
+        if (force_to_num(output) == GCODE_VAL_INT)
+            output->int_val = -output->int_val;
+        else
                 output->float_val = -output->float_val;
-                break;
-        }
         break;
     }
 
@@ -725,6 +715,8 @@ void gcode_interp_exec(GCodeInterpreter* interp,
 }
 
 void gcode_interp_delete(GCodeInterpreter* interp) {
+    if (!interp)
+        return;
     gcode_error_delete(interp->error);
     free(interp->field_buf);
     free(interp->str_buf);

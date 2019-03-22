@@ -76,8 +76,6 @@ static inline GCodeNode* newop3(
 static inline bool add_statement(GCodeParser* parser, const char* command,
                                  GCodeNode* children)
 {
-    if (!children)
-        return true;
     GCodeStatementNode* statement =
         (GCodeStatementNode*)gcode_statement_new(command, children);
     if (!statement)
@@ -97,7 +95,6 @@ static void out_of_memory(GCodeParser* parser) {
 
 typedef GCodeLocation YYLTYPE;
 #define YYLTYPE_IS_DECLARED
-#define YYLLOC_DEFAULT
 
 static void yyerror(const GCodeLocation* location, GCodeParser* parser,
                     const char* msg)
@@ -210,14 +207,14 @@ statements:
 ;
 
 statement:
-  STRING[command] args { OOM(add_statement(parser, $command,
-                                           $args)); }
+  STRING[command] args { OOM(add_statement(parser, $command, $args));
+                         free($command); }
 | error
 ;
 
 args:
   END_OF_STATEMENT          { $$ = NULL; }
-| arg[a] arg[b]           { $$ = gcode_add_next($a, $b); }
+| arg[a] args[b]            { $$ = gcode_add_next($a, $b); }
 ;
 
 arg:
@@ -328,10 +325,12 @@ static inline bool push_string(void* context, int id, const char* value) {
 
 static bool lex_identifier(void* context, const char* name) {
     push_string(context, TOK_IDENTIFIER, name);
+    return true;
 }
 
 static bool lex_string_literal(void* context, const char* value) {
     push_string(context, TOK_STRING, value);
+    return true;
 }
 
 static bool lex_int_literal(void* context, int64_t value) {
@@ -418,6 +417,8 @@ void gcode_parser_finish(GCodeParser* parser) {
 }
 
 void gcode_parser_delete(GCodeParser* parser) {
+    if (!parser)
+        return;
     gcode_lexer_delete(parser->lexer);
     gcode_error_delete(parser->error);
     if (parser->yyps)

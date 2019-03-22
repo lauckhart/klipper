@@ -197,8 +197,9 @@ static inline bool gcode_is_parent_node(const GCodeNode* node) {
         case GCODE_OPERATOR:
         case GCODE_STATEMENT:
             return true;
+        default:
+            return false;
     }
-    return false;
 }
 
 // Navigate to the next node.
