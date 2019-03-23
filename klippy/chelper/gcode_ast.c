@@ -10,7 +10,7 @@ GCodeNode* gcode_parameter_new(const char* name) {
     if (!name)
         return NULL;
     size_t l = strlen(name);
-    GCodeParameterNode* n = malloc(sizeof(GCodeParameterNode));
+    GCodeParameterNode* n = malloc(sizeof(GCodeParameterNode) + l + 1);
     if (!n)
         return NULL;
     n->type = GCODE_PARAMETER;

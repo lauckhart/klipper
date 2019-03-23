@@ -1,6 +1,6 @@
-# This Makefile refreshes generated files and builds the gcode-cli tool used
-# for parser development.  It is not necessary to build this module to run
-# Klipper.
+# This Makefile refreshes generated files, builds the gcode-cli tool used
+# for parser development, and runs tests.  It is not necessary to build thi
+# module to run Klipper.
 #
 # Copyright (C) 2019 Greg Lauckhart <greg@lauckhart.com>
 #
@@ -24,7 +24,7 @@ KEYWORD_DEPS = \
 	../gcode_parser.generated.c \
 	gcode_keyword_gen.sh
 
-.DEFAULT_GOAL := out/gcode-cli
+.DEFAULT_GOAL := out/test.result.gcode
 
 ../gcode_parser.generated.c: gcode_parser.y
 	$(BISON) -Wall -v --report-file=out/gcode_parser.output -o $@ $<

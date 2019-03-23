@@ -70,7 +70,8 @@ typedef struct GCodeParentNode {
     GCodeNode* children;
 } GCodeParentNode;
 
-// A "statement" is a single line of G-Code.
+// A "statement" is a single line of G-Code.  Arguments are a list of key/value
+// pairs.
 typedef struct GCodeStatementNode GCodeStatementNode;
 struct GCodeStatementNode {
     gcode_node_type_t type;
@@ -196,7 +197,6 @@ static inline bool gcode_is_parent_node(const GCodeNode* node) {
         case GCODE_FUNCTION:
         case GCODE_OPERATOR:
         case GCODE_STATEMENT:
-            return true;
         default:
             return false;
     }

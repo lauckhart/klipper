@@ -40,6 +40,9 @@ def gcode_python_serialize(executor, dict):
 # Statements parse into separate queues depending on the context (e.g. socket,
 # macro, batch script)
 class Queue:
+    size = 0
+    queue = None
+
     def __initialize__(self, executor):
         self.executor = executor
         self.queue = lib.gcode_queue_new(ffi.new_handle(self,
@@ -50,24 +53,36 @@ class Queue:
         lib.gcode_queue_delete(self.queue)
     def parse(self, data):
         self.executor._fatal = None
-        lib.gcode_queue_parse(self.queue, data, len(data))
+        self.size = lib.gcode_queue_parse(self.queue, data, len(data))
         self.executor.check_fatal()
     def parse_finish(self):
         self.executor._fatal = None
-        lib.gcode_queue_parse(self.queue)
+        self.size = lib.gcode_queue_parse(self.queue)
         self.executor.check_fatal()
-    def size(self):
-        return self.queue.size
     def execute(self):
-        while self.executor.execute_next(self, True):
+        while self.execute_next(self, True):
             pass
+    def execute_next(self):
+        self._command_result = self._error_result = None
+        self.size = lib.gcode_queue_exec_next(self.queue)
+        if self._error_result:
+            raise self._error_result
+        if self.statement_result:
+            executor.gcode.process_command(self._statement_result.command,
+                                           self._statement_result.params,
+                                           need_ack)
+        else:
+            raise "Internal: No error or command emitted for statement"
+        return self.size != 0
 
 # Manages queues and executes statements
 class Executor:
-    def __initialize__(self, gcode):
+    executor = None
+
+    def __init__(self, gcode):
         self.gcode = gcode
-        self.executor = lib.gcode_bridge_new(ffi.new_handle(self))
-        if self.bridge == ffi.NULL:
+        self.executor = lib.gcode_executor_new(ffi.new_handle(self))
+        if self.executor == ffi.NULL:
             raise "Out of memory (initializing G-Code executor)"
     def create_queue():
         return Queue(self)
@@ -75,20 +90,8 @@ class Executor:
         queue = self.create_queue()
         queue.parse(data)
         queue.parse_finish()
-        while execute_next(queue, False):
+        while queue.execute_next(queue, False):
             pass
-    def execute_next(self, queue, need_ack):
-        self._command_result = self._error_result = None
-        has_more = lib.gcode_queue_exec_next(queue)
-        if self._error_result:
-            raise self._error_result
-        if self.statement_result:
-            gcode.process_command(self._statement_result.command,
-                                  self._statement_result.params,
-                                  need_ack)
-        else:
-            raise "Internal: No error or command emitted for statement"
-        return has_more
     def check_m112():
         if self._has_m112:
             self._has_m112 = False
@@ -99,4 +102,5 @@ class Executor:
             self._fatal = None
             raise message
     def __del__(self):
-        lib.gcode_executor_delete(self.executor)
+        if (self.executor):
+            lib.gcode_executor_delete(self.executor)

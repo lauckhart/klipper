@@ -30,7 +30,7 @@ typedef struct RingEntry {
     bool need_free;
     union {
         GCodeStatementNode* statement;
-        const char* error;
+        char* error;
     };
 } RingEntry;
 
@@ -55,29 +55,31 @@ struct GCodeExecutor {
     GCodeInterpreter* interp;
 };
 
-static void ring_entry_free(RingEntry entry) {
-    if (entry.need_free)
-        if (entry.is_error)
-            free(entry.error);
+static void ring_entry_free(RingEntry* entry) {
+    if (entry->need_free) {
+        if (entry->is_error)
+            free(entry->error);
         else
-            gcode_node_delete(entry.statement);
+            gcode_node_delete((GCodeNode*)entry->statement);
+    }
 }
 
 static void ring_add(GCodeQueue* queue, RingEntry entry) {
     if (queue->size == queue->ring_size) {
-        RingEntry* new_ring = reallocarray(queue->ring, queue->ring_size * 2,
-            sizeof(RingEntry));
+        size_t ring_size = 2 * queue->ring_size;
+        RingEntry* new_ring = realloc(queue->ring,
+                                      2 * ring_size * sizeof(RingEntry));
         if (!new_ring) {
             gcode_python_fatal(queue->executor->context,
                                "Out of memory (ring_add)");
-            ring_entry_free(entry);
+            ring_entry_free(&entry);
             return;
         }
+        queue->ring_size = ring_size;
         size_t move_length =
             queue->ring_pos + queue->size - queue->ring_size;
         for (size_t i = 0; i < move_length; i++)
             new_ring[queue->ring_size + i] = new_ring[i];
-        queue->ring_size *= 2;
     }
     size_t slot = (queue->ring_pos + queue->size) % queue->ring_size;
     queue->ring[slot] = entry;
@@ -85,11 +87,13 @@ static void ring_add(GCodeQueue* queue, RingEntry entry) {
 }
 
 void gcode_queue_delete(GCodeQueue* queue) {
+    for (size_t i = queue->ring_pos; i < queue->ring_pos + queue->size; i++)
+        ring_entry_free(&queue->ring[i % queue->ring_size]);
     free(queue->ring);
     free(queue);
 }
 
-static void parse_error(void* context, GCodeError* error) {
+static void parse_error(void* context, const GCodeError* error) {
     GCodeQueue* queue = context;
     RingEntry e = { true, true, .error = strdup(gcode_error_get(error)) };
     if (!e.error) {
@@ -99,12 +103,13 @@ static void parse_error(void* context, GCodeError* error) {
     ring_add(queue, e);
 }
 
-static void parse_statement(void* context, GCodeStatementNode* statement) {
+static bool parse_statement(void* context, GCodeStatementNode* statement) {
     GCodeQueue* queue = context;
     RingEntry e = { true, true, .statement = statement };
     ring_add(queue, e);
     if (!strcmp(statement->command, "M112"))
         gcode_python_m112(queue->executor->context);
+    return true;
 }
 
 GCodeQueue* gcode_queue_new(GCodeExecutor* executor) {
@@ -127,19 +132,23 @@ GCodeQueue* gcode_queue_new(GCodeExecutor* executor) {
     queue->ring_size = 32;
     queue->ring = calloc(queue->ring_size, sizeof(RingEntry));
     queue->parser = gcode_parser_new(queue, parse_error, parse_statement);
+
+    return queue;
 }
 
-void gcode_queue_parse(GCodeQueue* queue, const char* buffer, size_t length) {
+size_t gcode_queue_parse(GCodeQueue* queue, const char* buffer, size_t length) {
     gcode_parser_parse(queue->parser, buffer, length);
+    return queue->size;
 }
 
-void gcode_queue_parse_finish(GCodeQueue* queue) {
+size_t gcode_queue_parse_finish(GCodeQueue* queue) {
     gcode_parser_finish(queue->parser);
+    return queue->size;
 }
 
-bool gcode_queue_exec_next(GCodeQueue* queue) {
+size_t gcode_queue_exec_next(GCodeQueue* queue) {
     if (!queue->size)
-        return false;
+        return 0;
 
     size_t slot = queue->ring_pos % queue->ring_size;
     RingEntry* entry = &queue->ring[slot];
@@ -149,26 +158,29 @@ bool gcode_queue_exec_next(GCodeQueue* queue) {
     else
         gcode_interp_exec(queue->executor->interp, entry->statement);
 
-    ring_entry_free(queue->ring[slot]);
+    ring_entry_free(&queue->ring[slot]);
     queue->size--;
     if (++queue->ring_pos == queue->ring_size)
         queue->ring_pos = 0;
+
+    return queue->size;
 }
 
 void gcode_executor_delete(GCodeExecutor* executor) {
     gcode_interp_delete(executor->interp);
 }
 
-static void interp_error(void* context, GCodeError* error) {
+static void interp_error(void* context, const GCodeError* error) {
     GCodeExecutor* executor = context;
-    gcode_python_error(context, gcode_error_get(error));
+    gcode_python_error(executor->context, gcode_error_get(error));
 }
 
-static void interp_exec(void* context, const char* command,
+static bool interp_exec(void* context, const char* command,
                                const char** params, size_t count)
 {
     GCodeExecutor* executor = context;
     gcode_python_exec(executor->context, command, params, count);
+    return true;
 }
 
 static bool interp_lookup(void* context, const GCodeVal* key,

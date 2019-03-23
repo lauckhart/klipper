@@ -171,7 +171,7 @@ class GCodeParser:
         else:
             params = { p[0]: p[1] in [ p.split('=', 2) in param_list ]}
         params['#command'] = cmd
-        params['#original'] = "%s %s" % (cmd, param_list.join(' '))
+        params['#original'] = "%s %s" % (cmd, " ".join(param_list))
         # Invoke handler for command
         self.need_ack = need_ack
         handler = self.gcode_handlers.get(cmd, self.cmd_default)
@@ -211,13 +211,13 @@ class GCodeParser:
                     self.request_restart('exit')
                 self.main_queue.parse_finish()
         # Handle case where multiple commands pending
-        if self.is_processing_data or self.main_queue.size() > 1:
-            if self.main_queue.size() < 20:
+        if self.is_processing_data or self.main_queue.size > 1:
+            if self.main_queue.size < 20:
                 # Check for M112 out-of-order
                 if self.executor.check_m112():
                     self.cmd_M112({})
             if self.is_processing_data:
-                if self.main_queue.size() >= 20:
+                if self.main_queue.size >= 20:
                     # Stop reading input
                     self.reactor.unregister_fd(self.fd_handle)
                     self.fd_handle = None

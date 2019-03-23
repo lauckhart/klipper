@@ -60,9 +60,13 @@ const char* serialize(void* context, dict_handle_t dict) {
 
 bool exec(void* context, const char* command, const char** args, size_t count) {
     fputs(command, stdout);
-    for (size_t i = 0; i < count; i++) {
+    for (size_t i = 0; i < count; i += 2) {
         putchar(' ');
         fputs(args[i], stdout);
+        if (i + 1 < count) {
+            putchar('=');
+            fputs(args[i + 1], stdout);
+        }
     }
     putchar('\n');
     return true;

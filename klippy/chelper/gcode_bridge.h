@@ -22,10 +22,10 @@ char* gcode_python_lookup(void* executor, void* dict, const char* key);
 char* gcode_python_serialize(void* executor, void* dict);
 
 GCodeQueue* gcode_queue_new(GCodeExecutor* executor);
-void gcode_queue_parse_finish(GCodeQueue* queue);
-bool gcode_queue_exec_next(GCodeQueue* executor);
+size_t gcode_queue_parse(GCodeQueue* queue, const char* buf, size_t length);
+size_t gcode_queue_parse_finish(GCodeQueue* queue);
+size_t gcode_queue_exec_next(GCodeQueue* executor);
 void gcode_queue_delete(GCodeQueue* executor);
-void gcode_queue_parse(GCodeQueue* queue, const char* buf, size_t length);
 
 GCodeExecutor* gcode_executor_new(void* context);
 void gcode_executor_delete(GCodeExecutor* executor);

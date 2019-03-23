@@ -74,7 +74,13 @@ typedef enum state_t {
     SCAN_AFTER_LINENO,
     SCAN_COMMAND_NAME,
     SCAN_ARGS,
-    SCAN_ARG,
+    SCAN_EXTENDED_ARG_KEY,
+    SCAN_AFTER_EXTENDED_KEY,
+    SCAN_AFTER_EXTENDED_SEPARATOR,
+    SCAN_TRADITIONAL_KEY,
+    SCAN_AFTER_TRADITIONAL_KEY,
+    SCAN_ARG_VALUE,
+    SCAN_RAW_ARG,
     SCAN_COMMENT,
     SCAN_EMPTY_LINE_COMMENT,
     SCAN_EXPR,
@@ -103,6 +109,12 @@ typedef enum state_t {
     SCAN_HEX_EXPONENT
 } state_t;
 
+typedef enum arg_mode_t {
+    ARG_TRADITIONAL,
+    ARG_EXTENDED,
+    ARG_STRING
+} arg_mode_t;
+
 struct GCodeLexer {
     bool (*keyword)(void*, gcode_keyword_t id);
     bool (*identifier)(void*, const char* value);
@@ -112,16 +124,18 @@ struct GCodeLexer {
     bool (*bridge)(void*);
     bool (*end_of_statement)(void*);
 
-    void*   context;
-    state_t state;
-    char*   token_str;
-    size_t  token_length;
-    size_t  token_limit;
-    size_t  expr_nesting;
-    int64_t int_value;
-    int8_t  digit_count;
-    uint32_t line;
-    uint32_t column;
+    void*       context;
+    state_t     state;
+    char*       token_str;
+    size_t      token_length;
+    size_t      token_limit;
+    size_t      expr_nesting;
+    int64_t     int_value;
+    int8_t      digit_count;
+    uint32_t    line;
+    uint32_t    column;
+    arg_mode_t  arg_mode;
+    bool        in_arg_value;
     GCodeLocation* location;
     GCodeError* error;
 };
@@ -244,34 +258,34 @@ static inline bool is_ident_char(char ch) {
 
 static inline bool is_symbol_char(char ch) {
     switch (ch) {
-        case '`':
-        case '~':
-        case '!':
-        case '@':
-        case '#':
-        case '%':
-        case '^':
-        case '&':
-        case '*':
-        case '(':
-        case ')':
-        case '-':
-        case '+':
-        case '=':
-        case '{':
-        case '[':
-        case '}':
-        case ']':
-        case '|':
-        case '\\':
-        case ':':
-        case ',':
-        case '<':
-        case '.':
-        case '>':
-        case '?':
-        case '/':
-            return true;
+    case '`':
+    case '~':
+    case '!':
+    case '@':
+    case '#':
+    case '%':
+    case '^':
+    case '&':
+    case '*':
+    case '(':
+    case ')':
+    case '-':
+    case '+':
+    case '=':
+    case '{':
+    case '[':
+    case '}':
+    case ']':
+    case '|':
+    case '\\':
+    case ':':
+    case ',':
+    case '<':
+    case '.':
+    case '>':
+    case '?':
+    case '/':
+        return true;
     }
 
     return false;
@@ -279,13 +293,13 @@ static inline bool is_symbol_char(char ch) {
 
 static inline bool continue_symbol(char c1, char c2) {
     switch (c1) {
-        case '*':
-            return c2 == '*';
+    case '*':
+        return c2 == '*';
 
-        case '<':
-        case '>':
-        case '=':
-            return c2 == '=';
+    case '<':
+    case '>':
+    case '=':
+        return c2 == '=';
     }
     return false;
 }
@@ -380,6 +394,47 @@ static inline bool emit_str(GCodeLexer* lexer) {
         return false;
     }
     free_token(lexer);
+    return true;
+}
+
+static inline bool enter_args(GCodeLexer* lexer) {
+    TOKEN_STOP;
+    if (!terminate_token(lexer)) {
+        free_token(lexer);
+        return false;
+    }
+    if (!lexer->str_literal(lexer->context, lexer->token_str)) {
+        lexer->state = SCAN_ERROR;
+        free_token(lexer);
+        return false;
+    }
+
+    free_token(lexer);
+
+    const char* name = lexer->token_str;
+    size_t length = lexer->token_length;
+    if (length == 4 && name[0] == 'M' && name[1] == '1' && name[2] == '1'
+        && name[3] == '7')
+    {
+        lexer->arg_mode = ARG_STRING;
+        lexer->state = SCAN_RAW_ARG;
+        return true;
+    }
+
+    lexer->state = SCAN_ARG_VALUE;
+
+    if (length >= 2 && name[0] >= 'A' && name[0] <= 'Z') {
+        for (size_t i = 1; i < length; i++)
+            if (name[i] < '0' || name[i] > '9') {
+                lexer->arg_mode = ARG_EXTENDED;
+                return true;
+            }
+        lexer->arg_mode = ARG_TRADITIONAL;
+        return true;
+    }
+
+    lexer->arg_mode = ARG_EXTENDED;
+
     return true;
 }
 
@@ -479,23 +534,23 @@ void gcode_lexer_scan(GCodeLexer* lexer, const char* buffer, size_t length) {
         switch (lexer->state) {
         case SCAN_NEWLINE:
             switch (ch) {
-                case 'N':
-                case 'n':
-                    lexer->state = SCAN_LINENO;
-                    break;
+            case 'N':
+            case 'n':
+                lexer->state = SCAN_LINENO;
+                break;
 
-                case ';':
-                    lexer->state = SCAN_EMPTY_LINE_COMMENT;
-                    break;
+            case ';':
+                lexer->state = SCAN_EMPTY_LINE_COMMENT;
+                break;
 
-                case '\n':
-                CASE_SPACE
-                    break;
+            case '\n':
+            CASE_SPACE
+                break;
 
-                default:
-                    BACK_UP;
-                    lexer->state = SCAN_COMMAND_NAME;
-                    break;
+            default:
+                BACK_UP;
+                lexer->state = SCAN_COMMAND_NAME;
+                break;
             }
             break;
 
@@ -506,117 +561,246 @@ void gcode_lexer_scan(GCodeLexer* lexer, const char* buffer, size_t length) {
 
         case SCAN_LINENO:
             switch (ch) {
-                case '\n':
-                    lexer->state = SCAN_NEWLINE;
-                    break;
+            case '\n':
+                lexer->state = SCAN_NEWLINE;
+                break;
 
-                CASE_SPACE
-                    lexer->state = SCAN_AFTER_LINENO;
-                    break;
+            CASE_SPACE
+                lexer->state = SCAN_AFTER_LINENO;
+                break;
 
-                case ';':
-                    lexer->state = SCAN_EMPTY_LINE_COMMENT;
-                    break;
+            case ';':
+                lexer->state = SCAN_EMPTY_LINE_COMMENT;
+                break;
 
-                case ENTER_EXPR:
-                    if (EMIT_CHAR_SYMBOL())
-                        lexer->state = SCAN_EXPR;
-                    break;
+            case ENTER_EXPR:
+                ERROR("Expression not allowed in line number");
+                break;
             }
             break;
 
         case SCAN_AFTER_LINENO:
             switch (ch) {
-                case '\n':
-                    lexer->state = SCAN_NEWLINE;
-                    break;
+            case '\n':
+                lexer->state = SCAN_NEWLINE;
+                break;
 
-                CASE_SPACE
-                    break;
+            CASE_SPACE
+                break;
 
-                case ';':
-                    lexer->state = SCAN_EMPTY_LINE_COMMENT;
-                    break;
+            case ';':
+                lexer->state = SCAN_EMPTY_LINE_COMMENT;
+                break;
 
-                default:
-                    BACK_UP;
-                    lexer->state = SCAN_COMMAND_NAME;
-                    break;
+            default:
+                BACK_UP;
+                lexer->state = SCAN_COMMAND_NAME;
+                break;
             }
             break;
 
         case SCAN_COMMAND_NAME:
             switch (ch) {
-                case ENTER_EXPR:
-                    TOKEN_START;
-                    free_token(lexer);
-                    ERROR("Expressions not allowed in command name");
-                    break;
+            case ENTER_EXPR:
+                TOKEN_START;
+                free_token(lexer);
+                ERROR("Expressions not allowed in command name");
+                break;
 
-                case '\n':
-                    emit_str(lexer);
-                    emit_end_of_statement(lexer);
-                    break;
+            case '\n':
+                emit_str(lexer);
+                emit_end_of_statement(lexer);
+                break;
 
-                CASE_SPACE
-                    if (emit_str(lexer))
-                        lexer->state = SCAN_ARGS;
-                    break;
+            CASE_SPACE
+                enter_args(lexer);
+                break;
 
-                case ';':
-                    if (emit_str(lexer))
-                        lexer->state = SCAN_COMMENT;
-                    break;
-
-                default:
-                    TOKEN_CHAR_UPPER();
-                    break;
-            }
-            break;
-            
-        case SCAN_ARGS:
-            switch (ch) {
-                case ENTER_EXPR:
-                    if (EMIT_CHAR_SYMBOL()) {
-                        lexer->state = SCAN_EXPR;
-                        lexer->expr_nesting = 0;
-                    }
-                    break;
-
-                case '\n':
-                    emit_end_of_statement(lexer);
-                    break;
-
-                case ';':
+            case ';':
+                if (emit_str(lexer))
                     lexer->state = SCAN_COMMENT;
-                    break;
+                break;
 
-                CASE_SPACE
+            default:
+                TOKEN_CHAR_UPPER();
+                break;
+            }
+            break;
+
+        case SCAN_ARGS:
+            if (lexer->arg_mode == ARG_EXTENDED)
+                lexer->in_arg_value = false;
+            switch (ch) {
+            case ENTER_EXPR:
+                if (EMIT_CHAR_SYMBOL())
+                    lexer->state = SCAN_EXPR;
+                break;
+                break;
+
+            case '\n':
+                emit_end_of_statement(lexer);
+                break;
+
+            case ';':
+                if (lexer->arg_mode == ARG_STRING) {
+                    TOKEN_START;
+                    if (TOKEN_CHAR(ch))
+                        lexer->state = SCAN_RAW_ARG;
+                } else
+                    lexer->state = SCAN_COMMENT;
+                break;
+
+            CASE_SPACE
+                break;
+
+            default:
+                TOKEN_START;
+                if (TOKEN_CHAR(ch))
+                    switch (lexer->arg_mode) {
+                    case ARG_TRADITIONAL:
+                        emit_str(lexer);
+                        lexer->state = SCAN_ARG_VALUE;
+                        break;
+
+                    case ARG_EXTENDED:
+                        lexer->state = SCAN_EXTENDED_ARG_KEY;
+                        break;
+
+                    case ARG_STRING:
+                        lexer->state = SCAN_RAW_ARG;
+                        break;
+                    }
+                break;
+            }
+            break;
+
+        case SCAN_EXTENDED_ARG_KEY:
+            switch (ch) {
+            case '\n':
+                free_token(lexer);
+                ERROR("Expected '=' after argument name");
+                emit_end_of_statement(lexer);
+                break;
+
+            case ';':
+                free_token(lexer);
+                ERROR("Expected '=' after argument name");
+                break;
+
+            CASE_SPACE
+                if (emit_str(lexer))
+                    lexer->state = SCAN_AFTER_EXTENDED_KEY;
+                break;
+
+            case '=':
+                if (emit_str(lexer)) {
+                    lexer->in_arg_value = true;
+                    lexer->state = SCAN_AFTER_EXTENDED_SEPARATOR;
+                }
+                break;
+
+            case ENTER_EXPR:
+                if (emit_str(lexer) && emit_bridge(lexer)
+                    && EMIT_CHAR_SYMBOL())
+                {
+                    lexer->state = SCAN_EXPR;
+                    lexer->expr_nesting = 0;
+                }
+                break;
+
+            default:
+                TOKEN_CHAR(ch);
+                break;
+            }
+            break;
+
+        case SCAN_AFTER_EXTENDED_KEY:
+            switch (ch) {
+            case '=':
+                lexer->in_arg_value = true;
+                lexer->state = SCAN_AFTER_EXTENDED_SEPARATOR;
+                break;
+
+            case '\n':
+                ERROR("Expected '=' after argument name");
+                emit_end_of_statement(lexer);
+                break;
+
+            CASE_SPACE
+                break;
+
+            default:
+                ERROR("Expected '=' after argument name");
+                break;
+            }
+            break;
+
+        case SCAN_AFTER_EXTENDED_SEPARATOR:
+            switch (ch) {
+            case '\n':
+            case ';':
+                ERROR("Expected argument value after '='");
+                break;
+
+            CASE_SPACE
+                break;
+
+            default:
+                BACK_UP;
+                lexer->state = SCAN_ARG_VALUE;
+            }
+            break;
+
+        case SCAN_AFTER_TRADITIONAL_KEY:
+            lexer->state = SCAN_ARG_VALUE;
+            switch (ch) {
+                case '=':
+                    // Allow optional "=" to keep things uniform
                     break;
 
                 default:
-                    TOKEN_START;
-                    TOKEN_CHAR(ch);
-                    lexer->state = SCAN_ARG;
+                    BACK_UP;
                     break;
             }
             break;
 
-        case SCAN_ARG:
+        case SCAN_ARG_VALUE:
+            switch (ch) {
+            case '\n':
+                emit_str(lexer);
+                emit_end_of_statement(lexer);
+                break;
+                
+            case ';':
+                if (emit_str(lexer))
+                    lexer->state = SCAN_COMMENT;
+                break;
+
+            CASE_SPACE
+                if (emit_str(lexer))
+                    lexer->state = SCAN_ARGS;
+                break;
+
+            case ENTER_EXPR:
+                if (emit_str(lexer) && emit_bridge(lexer)
+                    && EMIT_CHAR_SYMBOL())
+                {
+                    lexer->state = SCAN_EXPR;
+                    lexer->expr_nesting = 0;
+                }
+                break;
+
+            default:
+                TOKEN_CHAR(ch);
+                break;
+            }
+            break;
+
+        case SCAN_RAW_ARG:
             switch (ch) {
                 case '\n':
-                    emit_str(lexer);
-                    emit_end_of_statement(lexer);
-                    break;
-
-                CASE_SPACE
                     if (emit_str(lexer))
-                        lexer->state = SCAN_ARGS;
-                    break;
-
-                case ';':
-                    if (emit_str(lexer))
-                        lexer->state = SCAN_COMMENT;
+                        emit_end_of_statement(lexer);
                     break;
 
                 case ENTER_EXPR:
@@ -630,7 +814,6 @@ void gcode_lexer_scan(GCodeLexer* lexer, const char* buffer, size_t length) {
 
                 default:
                     TOKEN_CHAR(ch);
-                    break;
             }
             break;
 
@@ -646,87 +829,111 @@ void gcode_lexer_scan(GCodeLexer* lexer, const char* buffer, size_t length) {
 
         case SCAN_EXPR:
             switch (ch) {
-                case '\n':
-                    TOKEN_START;
-                    TOKEN_STOP;
-                    ERROR("Unterminated expression");
-                    lexer->state = SCAN_NEWLINE;
-                    break;
+            case '\n':
+                TOKEN_START;
+                TOKEN_STOP;
+                ERROR("Unterminated expression");
+                lexer->state = SCAN_NEWLINE;
+                break;
 
-                CASE_SPACE
-                    break;
+            CASE_SPACE
+                break;
 
-                case '(':
-                    lexer->expr_nesting++;
-                    EMIT_CHAR_SYMBOL();
-                    break;
+            case '(':
+                lexer->expr_nesting++;
+                EMIT_CHAR_SYMBOL();
+                break;
 
-                case ')':
-                    if (lexer->expr_nesting)
-                        lexer->expr_nesting--;
-                    EMIT_CHAR_SYMBOL();
-                    break;
+            case ')':
+                if (lexer->expr_nesting)
+                    lexer->expr_nesting--;
+                EMIT_CHAR_SYMBOL();
+                break;
 
-                case EXIT_EXPR:
-                    if (EMIT_CHAR_SYMBOL())
-                        lexer->state = SCAN_AFTER_EXPR;
-                    break;
+            case EXIT_EXPR:
+                if (EMIT_CHAR_SYMBOL())
+                    lexer->state = SCAN_AFTER_EXPR;
+                break;
 
-                case '0':
-                    TOKEN_START;
+            case '0':
+                TOKEN_START;
+                TOKEN_CHAR(ch);
+                lexer->state = SCAN_NUMBER_BASE;
+                break;
+
+            case '\'':
+            case '`':
+                TOKEN_START;
+                ERROR("Unexpected character %c", ch);
+                break;
+
+            case '.':
+                TOKEN_START;
+                TOKEN_CHAR(ch);
+                lexer->state = SCAN_DOT;
+                break;
+
+            case '"':
+                TOKEN_START;
+                lexer->state = SCAN_STR;
+                break;
+
+            default:
+                TOKEN_START;
+                if (ch >= '1' && ch <= '9') {
                     TOKEN_CHAR(ch);
-                    lexer->state = SCAN_NUMBER_BASE;
-                    break;
-
-                case '\'':
-                case '`':
-                    TOKEN_START;
-                    ERROR("Unexpected character %c", ch);
-                    break;
-
-                case '.':
-                    TOKEN_START;
+                    lexer->int_value = ch - '0';
+                    lexer->digit_count = 1;
+                    lexer->state = SCAN_DECIMAL;
+                } else if (is_symbol_char(ch)) {
+                    lexer->state = SCAN_SYMBOL;
                     TOKEN_CHAR(ch);
-                    lexer->state = SCAN_DOT;
-                    break;
-
-                case '"':
-                    TOKEN_START;
-                    lexer->state = SCAN_STR;
-                    break;
-
-                default:
-                    TOKEN_START;
-                    if (ch >= '1' && ch <= '9') {
-                        TOKEN_CHAR(ch);
-                        lexer->int_value = ch - '0';
-                        lexer->digit_count = 1;
-                        lexer->state = SCAN_DECIMAL;
-                    } else if (is_symbol_char(ch)) {
-                        lexer->state = SCAN_SYMBOL;
-                        TOKEN_CHAR(ch);
-                    } else {
-                        lexer->state = SCAN_IDENTIFIER;
-                        TOKEN_CHAR_UPPER();
-                    }
-                    break;
+                } else {
+                    lexer->state = SCAN_IDENTIFIER;
+                    TOKEN_CHAR_UPPER();
+                }
+                break;
             }
             break;
 
         case SCAN_AFTER_EXPR:
             switch (ch) {
-                case '\n':
-                case ';':
-                CASE_SPACE
-                    lexer->state = SCAN_ARGS;
-                    break;
+            case '\n':
+                emit_end_of_statement(lexer);
+                break;
 
-                default:
+            case ';':
+            CASE_SPACE
+                if (lexer->arg_mode == ARG_STRING) {
                     if (emit_bridge(lexer))
-                        lexer->state = SCAN_ARG;
-                    break;
+                        lexer->state = SCAN_RAW_ARG;
+                } else
+                    lexer->state = SCAN_ARGS;
+                BACK_UP;
+                break;
+
+            default:
+                switch (lexer->arg_mode) {
+                    case ARG_TRADITIONAL:
+                        TOKEN_CHAR(ch);
+                        lexer->state = SCAN_ARG_VALUE;
+                        break;
+
+                    case ARG_EXTENDED:
+                        if (emit_bridge(lexer)) {
+                            if (lexer->in_arg_value)
+                                lexer->state = SCAN_ARG_VALUE;
+                            else
+                                lexer->state = SCAN_EXTENDED_ARG_KEY;
+                        }
+                        break;
+
+                    case ARG_STRING:
+                        if (emit_bridge(lexer))
+                            lexer->state = SCAN_RAW_ARG;
+                        break;
+                }
             }
-            BACK_UP;
             break;
 
         case SCAN_SYMBOL:
@@ -761,24 +968,24 @@ void gcode_lexer_scan(GCodeLexer* lexer, const char* buffer, size_t length) {
 
         case SCAN_STR:
             switch (ch) {
-                case '\\':
-                    lexer->state = SCAN_STR_ESCAPE;
-                    break;
+            case '\\':
+                lexer->state = SCAN_STR_ESCAPE;
+                break;
 
-                case '"':
-                    if (emit_str(lexer))
-                        lexer->state = SCAN_EXPR;
-                    break;
+            case '"':
+                if (emit_str(lexer))
+                    lexer->state = SCAN_EXPR;
+                break;
 
-                case '\n':
-                    ERROR("Unterminated string");
-                    free_token(lexer);
-                    lexer->state = SCAN_NEWLINE;
-                    break;
+            case '\n':
+                ERROR("Unterminated string");
+                free_token(lexer);
+                lexer->state = SCAN_NEWLINE;
+                break;
 
-                default:
-                    TOKEN_CHAR(ch);
-                    break;
+            default:
+                TOKEN_CHAR(ch);
+                break;
             }
             break;
 

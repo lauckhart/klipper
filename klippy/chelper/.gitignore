@@ -1,0 +1,4 @@
+*.o
+*.so
+*.a
+_chelper.c
