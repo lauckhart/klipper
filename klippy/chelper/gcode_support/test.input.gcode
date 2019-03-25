@@ -64,139 +64,179 @@ N1 G1 X0 Y0 ; Comment
 🍺
 
 
+; Argument formats
+
+x1 b={3+4}
+x1 a12 bcd e=123
+X1 A12 Bcd E=123
+X1 a{1 + 2} b={3 + 4} {"c"}5 {"d"}{6}
+m117 Anything should be allowed here; there aren't even comments
+m117 Although {"expressions"} are OK
+extended foo=bar biz= baz dee =dum wee = wum
+extended {"foo"}=bar {"biz"}= baz {"dee"} =dum {"wee"} = wum
+extended {"f"}{"oo"}=bar {"b"}{"iz"}= baz {"d"}{"ee"} =dum {"w"}{"ee"} = wum
+extended foo={"b"}{"ar"} biz= {"b"}{"az"} dee ={"d"}{"um"} wee = {"w"}{"um"}
+a foo = bar
+
+
 ; Single literal expressions
 
 ; ints
-int {0} {0b0} {00} {0x0}
-int {10} {0b10} {0x10} {010}
-int {1} {+1} {-1} {++1} {--1} {10} {+10} {-10}
+int a={0} b={0b0} c={00} d={0x0}
+int a={10} b={0b10} c={0x10} d={010}
+int a={1} b={+1} c={-1} d={++1} e={--1} f={10} g={+10} h={-10}
 
 ; Decimal floats
-dec_f {0.0} {1.0} {1.1} {12.34} {+1.0} {-1.0} {.0} {.1} {.12}
-dec_f {1e2} {1e10} {1E-10} {12.34e56} {12.34e-56} {.1e10} {.12e10} {.12e-10}
+dec_f a={0.0} b={1.0} c={1.1} d={12.34} e={+1.0} f={-1.0} g={.0} h={.1} i={.12}
+dec_f a={1e2} b={1e10} c={1E-10} d={12.34e56} e={12.34e-56} f={.1e10} g={.12e10}
+dec_f   h={.12e-10}
 
 ; Hex floats (who knew?)
-hex_f {0x0.0} {0X1.0} {0x1.1} {0x12.34} {0xab.cd} {+0x1.0} {-0x1.0}
-hex_f {0x1p10} {0x1P-10} {0x12.34p56} {0x12.34p-56}
-hex_f {0xab.cdp10} {0xab.cdp-56} {0xAb.CdP10}
+hex_f a={0x0.0} b={0X1.0} c={0x1.1} d={0x12.34} e={0xab.cd} f={+0x1.0}
+hex_f   h={-0x1.0}
+hex_f a={0x1p10} b={0x1P-10} c={0x12.34p56} d={0x12.34p-56}
+hex_f a={0xab.cdp10} b={0xab.cdp-56} c={0xAb.CdP10}
 
 ; Special floats
-spec_f {nan} {NAN} {NaN}
-spec_f {inf} {INF} {InF}
-spec_f {-inf} {-INF} {-InF}
-spec_f {+inf} {+INF} {+InF}
+spec_f a={nan} b={NAN} c={NaN}
+spec_f a={inf} b={INF} c={InF}
+spec_f a={-inf} b={-INF} c={-InF}
+spec_f a={+inf} b={+INF} d={+InF}
 
 ; Booleans
-bool {true} {TRUE} {tRuE}
-bool {false} {FALSE} {fAlSe}
+bool a={true} b={TRUE} c={tRuE}
+bool a={false} b={FALSE} c={fAlSe}
 
 ; Strings
-str {"x"} {"xy"}
-str {"foo\tbar"} {"foo\\bar"}
-str {"\101"} {"\x42"}
-str {"\u0041"} {"✈"} {"\u2708"}
-str {"\U00000061"} {"🍺"} {"\U0001f37a"}
+str a={"x"} b={"xy"}
+str a={"foo\tbar"} b={"foo\\bar"}
+str a={"\101"} b={"\x42"}
+str a={"\u0041"} b={"✈"} c={"\u2708"}
+str a={"\U00000061"} b={"🍺"} c={"\U0001f37a"}
 
 
-; Bridge (TODO)
+; Bridge
 
-bridge foo{"bar"} {"foo"}bar foo{"bar"}biz {"foo"}{"bar"}
-bridge foo{"bar"}{"biz"}baz {"foo"}bar{"biz"}
-bridge foo{1} {1}bar foo{1}biz {1}{2} foo{1}{2}baz {1}bar{2}
+bridge a=foo{"bar"} b={"foo"}bar c=foo{"bar"}biz d={"foo"}{"bar"}
+bridge a=foo{"bar"}{"biz"}baz b={"foo"}bar{"biz"}
+bridge a=foo{1} b={1}bar c=foo{1}biz d={1}{2} e=foo{1}{2}baz f={1}bar{2}
 
 
 ; Boolean operators
 
-bool_op {not true} {not false} {not 0} {not 1} {not "true"} {not "false"}
-bool_op {true and true} {true and false} {false and true} {false and false}
-bool_op {true or true} {true or false} {false or true} {false or false}
+bool_op a={not true} b={not false} c={not 0} d={not 1} e={not "true"}
+bool_op   f={not "false"}
+bool_op a={true and true} b={true and false} c={false and true}
+bool_op   d={false and false}
+bool_op a={true or true} b={true or false} c={false or true} d={false or false}
 
 
 ; Arithmetic operators
 
-arith_op {1 + 2} {1.1 + 2.2} {"1" + "2"} {true + false}
-arith_op {1 - 2} {1.1 - 2.2} {"1" - "2"} {true - false}
-arith_op {1 * 2} {1.1 * 2.2} {"1" * "2"} {true * false}
-arith_op {1 / 1} {1.1 / 2.2} {"1" / "2"} {true / false}
-arith_op {false / true} {1 / 0} {1.1 / 0}
-arith_op {5 % 2} {"5" % "2"}
-arith_op {2 ** 3} {2.2 ** 3.3} {"2" ** "3"}
+arith_op a={1 + 2} b={1.1 + 2.2} c={"1" + "2"} d={true + false}
+arith_op a={1 - 2} b={1.1 - 2.2} c={"1" - "2"} d={true - false}
+arith_op a={1 * 2} b={1.1 * 2.2} c={"1" * "2"} d={true * false}
+arith_op a={1 / 1} b={1.1 / 2.2} c={"1" / "2"} d={true / false}
+arith_op a={false / true} b={1 / 0} c={1.1 / 0}
+arith_op a={5 % 2} b={"5" % "2"}
+arith_op a={2 ** 3} b={2.2 ** 3.3} c={"2" ** "3"}
 
 
 ; Comparison operators
 
 ; Integer
-int_comp {1 < 0} {1 < 1} {1 < 2}
-int_comp {1 <= 0} {1 <= 1} {1 <= 2}
-int_comp {1 == 0} {1 == 1} {1 == 2}
-int_comp {1 > 0} {1 > 1} {1 > 2}
-int_comp {1 >= 0} {1 >= 1} {1 >= 2}
+int_comp a={1 < 0} b={1 < 1} c={1 < 2}
+int_comp a={1 <= 0} b={1 <= 1} c={1 <= 2}
+int_comp a={1 == 0} b={1 == 1} c={1 == 2}
+int_comp a={1 > 0} b={1 > 1} c={1 > 2}
+int_comp a={1 >= 0} b={1 >= 1} c={1 >= 2}
 
 ; Float
-float_comp {1.1 < 0.1} {1.1 < 1.1} {1.1 < 2.1}
-float_comp {1.1 <= 0.1} {1.1 <= 1.1} {1.1 <= 2.1}
-float_comp {1.1 == 0.1} {1.1 == 1.1} {1.1 == 2.1}
-float_comp {1.1 > 0.1} {1.1 > 1.1} {1.1 > 2.1}
-float_comp {1.1 >= 0.1} {1.1 >= 1.1} {1.0 >= 2.1}
-float_comp {inf == inf} {-inf == inf} {nan == nan}
+float_comp a={1.1 < 0.1} b={1.1 < 1.1} c={1.1 < 2.1}
+float_comp a={1.1 <= 0.1} b={1.1 <= 1.1} c={1.1 <= 2.1}
+float_comp a={1.1 == 0.1} b={1.1 == 1.1} c={1.1 == 2.1}
+float_comp a={1.1 > 0.1} b={1.1 > 1.1} c={1.1 > 2.1}
+float_comp a={1.1 >= 0.1} b={1.1 >= 1.1} c={1.0 >= 2.1}
+float_comp a={inf == inf} b={-inf == inf} c={nan == nan}
 
 ; String
-str_comp {"b" < "a"} {"b" < "b"} {"b" < "c"}
-str_comp {"b" <= "a"} {"b" <= "b"} {"b" <= "c"}
-str_comp {"b" == "a"} {"b" == "b"} {"b" == "c"}
-str_comp {"b" > "a"} {"b" > "b"} {"b" > "c"}
-str_comp {"b" >= "a"} {"b" >= "b"} {"b" >= "c"}
+str_comp a={"b" < "a"} b={"b" < "b"} c={"b" < "c"}
+str_comp a={"b" <= "a"} b={"b" <= "b"} c={"b" <= "c"}
+str_comp a={"b" == "a"} b={"b" == "b"} c={"b" == "c"}
+str_comp a={"b" > "a"} b={"b" > "b"} c={"b" > "c"}
+str_comp a={"b" >= "a"} b={"b" >= "b"} c={"b" >= "c"}
 
 ; Boolean
-bool_comp {true < false} {true < true} {false < true}
-bool_comp {true <= false} {true <= true} {false <= true}
-bool_comp {true == false} {true == true} {false == true}
-bool_comp {true > false} {true < true} {false < true}
-bool_comp {true >= false} {true >= true} {false >= true}
+bool_comp a={true < false} b={true < true} c={false < true}
+bool_comp a={true <= false} b={true <= true} c={false <= true}
+bool_comp a={true == false} b={true == true} c={false == true}
+bool_comp a={true > false} b={true < true} c={false < true}
+bool_comp a={true >= false} b={true >= true} c={false >= true}
 
 
 ; Casts
 
-cast {"1" + "2"} {true + false}
-cast {1 ~ 2} {1.1 ~ 2.2} {true ~ false}
-cast {"false" or "false"} {"false" or "true"}
-cast {0 or 0} {0 or 1}
-cast {"0" or "0"} {"0" or "1"} {"foo" or "bar"}
-cast {1 == 2.1}
-cast {str(1)} {boolean("false")} {int("01")} {float("1.1")}
+cast a={"1" + "2"} b={true + false}
+cast a={1 ~ 2} b={1.1 ~ 2.2} c={true ~ false}
+cast a={"false" or "false"} b={"false" or "true"}
+cast a={0 or 0} b={0 or 1}
+cast a={"0" or "0"} b={"0" or "1"} c={"foo" or "bar"}
+cast a={1 == 2.1}
+cast a={str(1)} b={boolean("false")} c={int("01")} d={float("1.1")}
 
 
 ; Precedence
 
-precedence {2 + 4 * 6}
-precedence {2 * 4 + 6}
-precedence {2 * (4 + 6)}
-precedence {not false == true}
-precedence {-1 + 2}
+precedence a={2 + 4 * 6}
+precedence b={2 * 4 + 6}
+precedence c={2 * (4 + 6)}
+precedence d={not false == true}
+precedence e={-1 + 2}
 
 
 ; Parameter references, lookup & dict serialization
 
-param {foo}
-param {foo.bar} {foo["BAR"]}
-param {foo.bar.biz} {foo["bar"]["biz"]}
-param {bar} ; Error
-param {foo["bar"]} ; Error
-param {foo.biz} ; Error
-param {foo["biz"]} ; Error
-param {foo[1]} ; Error
-param {"foo".bar} ; Error
-param {"foo"["bar"]} ; Error
+param a={foo}
+param b={foo.bar} c={foo["BAR"]}
+param a={foo.bar.biz} b={foo["bar"]["biz"]}
 
 
 ; Lexer errors (TODO)
+
+; Misc
 {0} ; Expr in first field
+
+; Arguments without values
+x1 a
+x1 a; error
+x1 a ; error
+x1 {"a"}
+x1 {"a"}; error
+x1 {"a"} ; error
+extended foo
+extended foo ; error
+extended foo; error
+extended {"foo"}
+extended {"foo"} ; error
+extended {"foo"};error
+extended foo=
+extended foo= ; error
+extended foo=; error
 
 
 ; Parser errors (TODO)
 
 
 ; Interpreter errors (TODO)
+
+; Invalid lookups
+param a={bar}
+param a={foo["bar"]}
+param a={foo.biz}
+param a={foo["biz"]}
+param a={foo[1]}
+param a={"foo".bar}
+param a={"foo"["bar"]}
 
 
 ; No newline

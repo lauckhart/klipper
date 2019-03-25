@@ -20,8 +20,33 @@ void error(void* context, const GCodeError* error) {
 }
 
 bool statement(void* context, GCodeStatementNode* statement) {
-    gcode_interp_exec(((CLI*)context)->interp, statement);
+    GCodeResult* result = gcode_interp_exec(((CLI*)context)->interp,
+                                            statement);
     gcode_node_delete((GCodeNode*)statement);
+
+    switch (result->type) {
+        case GCODE_RESULT_UNKNOWN:
+            printf("*** ERROR: No execution result\n");
+            break;
+
+        case GCODE_RESULT_ERROR:
+            error(context, result->error);
+            break;
+
+        case GCODE_RESULT_COMMAND:
+            fputs(result->command.name, stdout);
+            for (size_t i = 0; i < result->command.count; i += 2) {
+                putchar(' ');
+                fputs(result->command.parameters[i], stdout);
+                if (i + 1 < result->command.count) {
+                    putchar('=');
+                    fputs(result->command.parameters[i + 1], stdout);
+                }
+            }
+            putchar('\n');
+            break;
+    }
+
     return true;
 }
 
@@ -58,20 +83,6 @@ const char* serialize(void* context, dict_handle_t dict) {
     return "";
 }
 
-bool exec(void* context, const char* command, const char** args, size_t count) {
-    fputs(command, stdout);
-    for (size_t i = 0; i < count; i += 2) {
-        putchar(' ');
-        fputs(args[i], stdout);
-        if (i + 1 < count) {
-            putchar('=');
-            fputs(args[i + 1], stdout);
-        }
-    }
-    putchar('\n');
-    return true;
-}
-
 void cli_delete(CLI* cli) {
     if (!cli)
         return;
@@ -104,7 +115,7 @@ CLI* cli_new(const char* input_filename) {
         return NULL;
     }
 
-    cli->interp = gcode_interp_new(cli, error, lookup, serialize, exec);
+    cli->interp = gcode_interp_new(cli, lookup, serialize);
     if (!cli->interp) {
         fprintf(stderr, "Out of memory (interpreter creation)");
         cli_delete(cli);

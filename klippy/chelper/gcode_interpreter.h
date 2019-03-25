@@ -47,28 +47,46 @@ typedef struct GCodeVal {
 
 typedef struct GCodeInterpreter GCodeInterpreter;
 
+// Execution output types
+typedef enum exec_result_type_t {
+    GCODE_RESULT_UNKNOWN,
+    GCODE_RESULT_ERROR,
+    GCODE_RESULT_COMMAND
+} exec_result_type_t;
+
+// Output for RESULT_COMMAND
+typedef struct GCodeCommand {
+    const char* name;
+    const char** parameters;
+    size_t count;
+} GCodeCommand;
+
+// Execution output
+typedef struct GCodeResult {
+    exec_result_type_t type;
+    union {
+        const GCodeError* error;
+        GCodeCommand command;
+    };
+} GCodeResult;
+
 // Instantiate a new interpreter.  All callbacks should return false on error.
 //
 // Args:
 //     context - opaque handled used in all callbacks
-//     error - error handling callback
 //     lookup - dictionary lookup callback, handles foo.bar and foo["bar"].
 //         If the child is not found, the callback should leave the result type
 //         as GCODE_VAL_UNKNOWN and return true.  Strings should live the
 //         lifetime of the current statement; the char* functions below return
 //         strings that meet this criteria 
 //     serialize - callback for serializing dicts
-//     exec - called for each G-Code command
 //
 // Returns the new interpreter or NULL on OOM.
 GCodeInterpreter* gcode_interp_new(
     void* context,
-    void (*error)(void* context, const GCodeError* error),
     bool (*lookup)(void* context, const GCodeVal* key, dict_handle_t parent,
                    GCodeVal* result),
-    const char* (*serialize)(void* context, dict_handle_t dict),
-    bool (*exec)(void* context, const char* command, const char** fields,
-                 size_t count)
+    const char* (*serialize)(void* context, dict_handle_t dict)
 );
 
 // Allocate space on the interpreter string buffer.  No memory management is
@@ -135,8 +153,10 @@ double gcode_float_cast(const GCodeVal* val);
 // Args:
 //     interp - the interpreter
 //     statement - one or more statements chained via ->next
-void gcode_interp_exec(GCodeInterpreter* interp,
-                       const GCodeStatementNode* statement);
+//
+// Returns result of execution, valid until next call.
+GCodeResult* gcode_interp_exec(GCodeInterpreter* interp,
+                               const GCodeStatementNode* statement);
 
 // Release all resources associated with an interpreter.
 //

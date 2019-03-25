@@ -24,24 +24,29 @@ struct GCodeInterpreter {
     size_t str_limit;
 
     GCodeError* error;
+    GCodeResult result;
 
     bool (*lookup)(void*,  const GCodeVal*, dict_handle_t, GCodeVal*);
     const char* (*serialize)(void*, dict_handle_t);
     bool (*exec)(void*, const char*, const char**, size_t);
 };
 
+static void interp_error(void* context, const GCodeError* error) {
+    GCodeInterpreter* interp = context;
+    interp->result.type = GCODE_RESULT_ERROR;
+    interp->result.error = error;
+}
+
 GCodeInterpreter* gcode_interp_new(
     void* context,
-    void (*error)(void*, const GCodeError*),
     bool (*lookup)(void*, const GCodeVal*, dict_handle_t, GCodeVal*),
-    const char* (*serialize)(void*, dict_handle_t),
-    bool (*exec)(void*, const char*, const char**, size_t))
+    const char* (*serialize)(void*, dict_handle_t))
 {
     GCodeInterpreter* interp = malloc(sizeof(GCodeInterpreter));
     if (!interp)
         return NULL;
 
-    interp->error = gcode_error_new(context, error);
+    interp->error = gcode_error_new(interp, interp_error);
     if (!interp->error) {
         free(interp);
         return NULL;
@@ -50,7 +55,6 @@ GCodeInterpreter* gcode_interp_new(
     interp->context = context;
     interp->lookup = lookup;
     interp->serialize = serialize;
-    interp->exec = exec;
 
     interp->field_buf = NULL;
     interp->field_count = 0;
@@ -687,31 +691,30 @@ static inline bool buffer_field(GCodeInterpreter* interp, const char* text) {
     return true;
 }
 
-static inline void exec_statement(GCodeInterpreter* interp,
-                                  const GCodeStatementNode* statement)
+GCodeResult* gcode_interp_exec(GCodeInterpreter* interp,
+                               const GCodeStatementNode* statement)
 {
     reset(interp);
 
-    GCodeVal result;
+    interp->result.type = GCODE_RESULT_UNKNOWN;
+
+    GCodeVal result_val;
     for (GCodeNode* n = statement->args; n; n = n->next) {
-        if (!eval(interp, n, &result))
-            return;
-        const char* str = gcode_str_cast(interp, &result);
+        if (!eval(interp, n, &result_val))
+            return &interp->result;
+        const char* str = gcode_str_cast(interp, &result_val);
         if (!str)
-            return;
+            return &interp->result;
         if (!buffer_field(interp, str))
-            return;
+            return &interp->result;
     }
 
-    interp->exec(interp->context, statement->command, interp->field_buf,
-                 interp->field_count);
-}
+    interp->result.type = GCODE_RESULT_COMMAND;
+    interp->result.command.name = statement->command;
+    interp->result.command.parameters = interp->field_buf;
+    interp->result.command.count = interp->field_count;
 
-void gcode_interp_exec(GCodeInterpreter* interp,
-                       const GCodeStatementNode* statement)
-{
-    for (const GCodeStatementNode* n = statement; n; n = n->next)
-        exec_statement(interp, n);
+    return &interp->result;
 }
 
 void gcode_interp_delete(GCodeInterpreter* interp) {

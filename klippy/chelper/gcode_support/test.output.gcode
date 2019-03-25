@@ -1,109 +1,140 @@
 M18
-G1 X0
-G1 X0 Y0
+G1 X=0
+G1 X=0 Y=0
 M18
-G1 X0
-G1 X0 Y0
+G1 X=0
+G1 X=0 Y=0
 M18
-G1 X0
-G1 X0 Y0
+G1 X=0
+G1 X=0 Y=0
 M18
-G1 X0
-G1 X0 Y0
+G1 X=0
+G1 X=0 Y=0
 M18
-G1 x0
-G1 x0 y0
+G1 x=0
+G1 x=0 y=0
 M18
-G1 x0
-G1 x0 y0
+G1 x=0
+G1 x=0 y=0
 M18
-G1 x0
-G1 x0 y0
+G1 x=0
+G1 x=0 y=0
 M18
-G1 x0
-G1 x0 y0
+G1 x=0
+G1 x=0 y=0
 M18
-G1 X0
-G1 X0 Y0
+G1 X=0
+G1 X=0 Y=0
 M18
-G1 X0
-G1 X0 Y0
+G1 X=0
+G1 X=0 Y=0
 M18
-G1 X0
-G1 X0 Y0
+G1 X=0
+G1 X=0 Y=0
 M18
-G1 X0
-G1 X0 Y0
+G1 X=0
+G1 X=0 Y=0
 ✈
 🍺
-INT 0 0 0 0
-INT 10 2 16 8
-INT 1 1 -1 1 1 10 10 -10
-DEC_F 0 1 1.1 12.34 1 -1 0 0.1 0.12
-DEC_F 100 1e+10 1e-10 1.234e+57 1.234e-55 1e+09 1.2e+09 1.2e-11
-HEX_F 0 1 1.0625 18.2031 171.801 1 -1
-HEX_F 1024 0.000976562 1.31167e+18 2.52619e-16
-HEX_F 175924 2.38421e-15 175924
-SPEC_F nan nan nan
-SPEC_F inf inf inf
-SPEC_F -inf -inf -inf
-SPEC_F inf inf inf
-BOOL true true true
-BOOL false false false
-STR x xy
-STR foo	bar foo\bar
-STR A B
-STR A ✈ ✈
-STR a 🍺 🍺
-BRIDGE foobar foobar foobarbiz foobar
-BRIDGE foobarbizbaz foobarbiz
-BRIDGE foo1 1bar foo1biz 12 foo12baz 1bar2
-BOOL_OP false true true false false true
-BOOL_OP true false false false
-BOOL_OP true true true false
-ARITH_OP 3 3.3 3 1
-ARITH_OP -1 -1.1 -1 1
-ARITH_OP 2 2.42 2 0
-ARITH_OP 1 0.5 0.5 nan
-ARITH_OP 0 nan nan
-ARITH_OP 1 1
-ARITH_OP 8 13.4895 8
-INT_COMP false false true
-INT_COMP false true true
-INT_COMP false true false
-INT_COMP true false false
-INT_COMP true true false
-FLOAT_COMP false false true
-FLOAT_COMP false true true
-FLOAT_COMP false true false
-FLOAT_COMP true false false
-FLOAT_COMP true true false
-FLOAT_COMP true false false
-STR_COMP false false true
-STR_COMP false true true
-STR_COMP false true false
-STR_COMP true false false
-STR_COMP true true false
-BOOL_COMP false false true
-BOOL_COMP false true true
-BOOL_COMP false true false
-BOOL_COMP true false true
-BOOL_COMP true true false
-CAST 3 1
-CAST 12 1.12.2 truefalse
-CAST false true
-CAST false true
-CAST false true true
-CAST false
-CAST 1 false 1 1.1
-PRECEDENCE 26
-PRECEDENCE 14
-PRECEDENCE 20
-PRECEDENCE true
-PRECEDENCE 1
-PARAM #<dict:foo>
-PARAM #<dict:bar> #<dict:bar>
+X1 b=7
+X1 a=12 b=cd e=123
+X1 A=12 B=cd E=123
+X1 a=3 b=7 c=5 d=6
+M117 Anything should be allowed here; there aren't even comments
+M117 Although expressions are OK
+EXTENDED foo=bar biz=baz dee=dum wee=wum
+EXTENDED foo=bar biz=baz dee=dum wee=wum
+EXTENDED foo=bar biz=baz dee=dum wee=wum
+EXTENDED foo=bar biz=baz dee=dum wee=wum
+A foo=bar
+INT a=0 b=0 c=0 d=0
+INT a=10 b=2 c=16 d=8
+INT a=1 b=1 c=-1 d=1 e=1 f=10 g=10 h=-10
+DEC_F a=0 b=1 c=1.1 d=12.34 e=1 f=-1 g=0 h=0.1 i=0.12
+DEC_F a=100 b=1e+10 c=1e-10 d=1.234e+57 e=1.234e-55 f=1e+09 g=1.2e+09
+DEC_F h=1.2e-11
+HEX_F a=0 b=1 c=1.0625 d=18.2031 e=171.801 f=1
+HEX_F h=-1
+HEX_F a=1024 b=0.000976562 c=1.31167e+18 d=2.52619e-16
+HEX_F a=175924 b=2.38421e-15 c=175924
+SPEC_F a=nan b=nan c=nan
+SPEC_F a=inf b=inf c=inf
+SPEC_F a=-inf b=-inf c=-inf
+SPEC_F a=inf b=inf d=inf
+BOOL a=true b=true c=true
+BOOL a=false b=false c=false
+STR a=x b=xy
+STR a=foo	bar b=foo\bar
+STR a=A b=B
+STR a=A b=✈ c=✈
+STR a=a b=🍺 c=🍺
+BRIDGE a=foobar b=foobar c=foobarbiz d=foobar
+BRIDGE a=foobarbizbaz b=foobarbiz
+BRIDGE a=foo1 b=1bar c=foo1biz d=12 e=foo12baz f=1bar2
+BOOL_OP a=false b=true c=true d=false e=false
+BOOL_OP f=true
+BOOL_OP a=true b=false c=false
+BOOL_OP d=false
+BOOL_OP a=true b=true c=true d=false
+ARITH_OP a=3 b=3.3 c=3 d=1
+ARITH_OP a=-1 b=-1.1 c=-1 d=1
+ARITH_OP a=2 b=2.42 c=2 d=0
+ARITH_OP a=1 b=0.5 c=0.5 d=nan
+ARITH_OP a=0 b=nan c=nan
+ARITH_OP a=1 b=1
+ARITH_OP a=8 b=13.4895 c=8
+INT_COMP a=false b=false c=true
+INT_COMP a=false b=true c=true
+INT_COMP a=false b=true c=false
+INT_COMP a=true b=false c=false
+INT_COMP a=true b=true c=false
+FLOAT_COMP a=false b=false c=true
+FLOAT_COMP a=false b=true c=true
+FLOAT_COMP a=false b=true c=false
+FLOAT_COMP a=true b=false c=false
+FLOAT_COMP a=true b=true c=false
+FLOAT_COMP a=true b=false c=false
+STR_COMP a=false b=false c=true
+STR_COMP a=false b=true c=true
+STR_COMP a=false b=true c=false
+STR_COMP a=true b=false c=false
+STR_COMP a=true b=true c=false
+BOOL_COMP a=false b=false c=true
+BOOL_COMP a=false b=true c=true
+BOOL_COMP a=false b=true c=false
+BOOL_COMP a=true b=false c=true
+BOOL_COMP a=true b=true c=false
+CAST a=3 b=1
+CAST a=12 b=1.12.2 c=truefalse
+CAST a=false b=true
+CAST a=false b=true
+CAST a=false b=true c=true
+CAST a=false
+CAST a=1 b=false c=1 d=1.1
+PRECEDENCE a=26
+PRECEDENCE b=14
+PRECEDENCE c=20
+PRECEDENCE d=true
+PRECEDENCE e=1
+PARAM a=#<dict:foo>
+PARAM b=#<dict:bar> c=#<dict:bar>
 *** ERROR: Undefined property 'bar'
+*** ERROR: Expressions not allowed in command name (line 207:2)
+*** ERROR: Expected value after parameter name (line 210:6)
+*** ERROR: Expected value after parameter name (line 211:6)
+*** ERROR: Expected value after parameter name (line 212:6)
+*** ERROR: Expected value after parameter name (line 213:10)
+*** ERROR: Expected value after parameter name (line 214:10)
+*** ERROR: Expected value after parameter name (line 215:10)
+*** ERROR: Expected '=' after parameter name (line 216:14)
+*** ERROR: Expected '=' after parameter name (line 217:15)
+*** ERROR: Expected '=' after parameter name (line 218:14)
+*** ERROR: Expected '=' after parameter name (line 219:18)
+*** ERROR: Expected '=' after parameter name (line 220:19)
+*** ERROR: Expected '=' after parameter name (line 221:18)
+*** ERROR: Expected '=' after parameter name (line 222:15)
+*** ERROR: Expected '=' after parameter name (line 223:16)
+*** ERROR: Expected '=' after parameter name (line 224:15)
 *** ERROR: Undefined parameter 'BAR'
 *** ERROR: Undefined property 'bar'
 *** ERROR: Undefined property 'BIZ'
@@ -111,5 +142,4 @@ PARAM #<dict:bar> #<dict:bar>
 *** ERROR: Undefined property '1'
 *** ERROR: Undefined property 'BAR'
 *** ERROR: Undefined property 'bar'
-*** ERROR: Expressions not allowed in command name (line 193:3)
 GOODBYE
