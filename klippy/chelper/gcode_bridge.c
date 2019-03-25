@@ -87,8 +87,9 @@ static void ring_add(GCodeQueue* queue, RingEntry entry) {
 }
 
 void gcode_queue_delete(GCodeQueue* queue) {
-    for (size_t i = queue->ring_pos; i < queue->ring_pos + queue->size; i++)
-        ring_entry_free(&queue->ring[i % queue->ring_size]);
+    if (queue->ring)
+        for (size_t i = queue->ring_pos; i < queue->ring_pos + queue->size; i++)
+            ring_entry_free(&queue->ring[i % queue->ring_size]);
     free(queue->ring);
     free(queue);
 }
@@ -105,7 +106,7 @@ static void parse_error(void* context, const GCodeError* error) {
 
 static bool parse_statement(void* context, GCodeStatementNode* statement) {
     GCodeQueue* queue = context;
-    RingEntry e = { true, true, .statement = statement };
+    RingEntry e = { false, true, .statement = statement };
     ring_add(queue, e);
     if (!strcmp(statement->command, "M112"))
         gcode_python_m112(queue->executor->context);
@@ -119,6 +120,8 @@ GCodeQueue* gcode_queue_new(GCodeExecutor* executor) {
 
     queue->executor = executor;
     queue->parser = gcode_parser_new(queue, parse_error, parse_statement);
+
+    queue->ring_size = 32;
     queue->ring = calloc(queue->ring_size, sizeof(RingEntry));
 
     if (!queue->parser || !queue->ring) {
@@ -129,7 +132,6 @@ GCodeQueue* gcode_queue_new(GCodeExecutor* executor) {
     queue->executor = executor;
     queue->size = 0;
     queue->ring_pos = 0;
-    queue->ring_size = 32;
     queue->ring = calloc(queue->ring_size, sizeof(RingEntry));
     queue->parser = gcode_parser_new(queue, parse_error, parse_statement);
 
@@ -146,17 +148,40 @@ size_t gcode_queue_parse_finish(GCodeQueue* queue) {
     return queue->size;
 }
 
-size_t gcode_queue_exec_next(GCodeQueue* queue) {
-    if (!queue->size)
+size_t gcode_queue_exec_next(GCodeQueue* queue, GCodePyResult* result) {
+    if (!queue->size) {
+        result->type = GCODE_PY_EMPTY;
         return 0;
+    }
 
     size_t slot = queue->ring_pos % queue->ring_size;
     RingEntry* entry = &queue->ring[slot];
 
-    if (entry->is_error)
-        gcode_python_error(queue->executor->context, entry->error);
-    else
-        gcode_interp_exec(queue->executor->interp, entry->statement);
+    if (entry->is_error) {
+        result->type = GCODE_PY_ERROR;
+        result->error = entry->error;
+    } else {
+        GCodeResult* gcode_result = gcode_interp_exec(queue->executor->interp,
+                                                entry->statement);
+        switch (gcode_result->type) {
+            case GCODE_RESULT_UNKNOWN:
+                result->type = GCODE_PY_ERROR;
+                result->error = "Internal: No result from gcode_interp_exec";
+                break;
+
+            case GCODE_RESULT_ERROR:
+                result->type = GCODE_PY_ERROR;
+                result->error = gcode_error_get(gcode_result->error);
+                break;
+
+            case GCODE_RESULT_COMMAND:
+                result->type = GCODE_PY_COMMAND;
+                result->command = gcode_result->command.name;
+                result->parameters = gcode_result->command.parameters;
+                result->count = gcode_result->command.count;
+                break;
+        }
+    }
 
     ring_entry_free(&queue->ring[slot]);
     queue->size--;
@@ -168,19 +193,6 @@ size_t gcode_queue_exec_next(GCodeQueue* queue) {
 
 void gcode_executor_delete(GCodeExecutor* executor) {
     gcode_interp_delete(executor->interp);
-}
-
-static void interp_error(void* context, const GCodeError* error) {
-    GCodeExecutor* executor = context;
-    gcode_python_error(executor->context, gcode_error_get(error));
-}
-
-static bool interp_exec(void* context, const char* command,
-                               const char** params, size_t count)
-{
-    GCodeExecutor* executor = context;
-    gcode_python_exec(executor->context, command, params, count);
-    return true;
 }
 
 static bool interp_lookup(void* context, const GCodeVal* key,
@@ -207,8 +219,8 @@ GCodeExecutor* gcode_executor_new(void* context) {
     GCodeExecutor* executor = malloc(sizeof(GCodeExecutor));
     if (!executor)
         return NULL;
-    executor->interp = gcode_interp_new(executor, interp_error, interp_lookup,
-                                        interp_serialize, interp_exec);
+    executor->interp = gcode_interp_new(executor, interp_lookup,
+                                        interp_serialize);
     if (!executor->interp)
         gcode_executor_delete(executor);
     return executor;

@@ -29,7 +29,7 @@ GCodeError* gcode_error_new(void* context,
     GCodeError* error = malloc(sizeof(GCodeError));
     if (!error)
         return NULL;
-    error->text = NULL;
+    error->text = error->buffer = NULL;
     error->limit = 0;
     error->location.first_line = 0;
     error->context = context;

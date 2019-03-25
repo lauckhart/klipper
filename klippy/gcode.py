@@ -17,7 +17,7 @@ class GCodeParser:
         self.printer = printer
         self.fd = fd
         self.executor = gcode_bridge.Executor(self)
-        self.main_queue = self.executor.create_queue
+        self.main_queue = self.executor.create_queue()
         printer.register_event_handler("klippy:ready", self.handle_ready)
         printer.register_event_handler("klippy:shutdown", self.handle_shutdown)
         printer.register_event_handler("klippy:disconnect",
