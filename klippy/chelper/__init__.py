@@ -23,7 +23,7 @@ SOURCE_FILES = [
     'gcode_ast.c', 'gcode_bridge.c', 'gcode_error.c'
 ]
 if hasattr(sys, 'gettotalrefcount'):
-    DEST_LIB = "_chelper_d.so" 
+    DEST_LIB = "_chelper_d.so"
 else:
     DEST_LIB = "_chelper.so"
 OTHER_FILES = [

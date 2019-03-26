@@ -104,7 +104,9 @@ void gcode_error_delete(GCodeError* error) {
     free(error);
 }
 
-void gcode_error_set_location(GCodeError* error, const GCodeLocation* location) {
+void gcode_error_set_location(GCodeError* error,
+                              const GCodeLocation* location)
+{
     if (location)
         error->location = *location;
 }

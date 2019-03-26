@@ -48,7 +48,7 @@ typedef struct GCodeResult {
 //         If the child is not found, the callback should leave the result type
 //         as GCODE_VAL_UNKNOWN and return true.  Strings should live the
 //         lifetime of the current statement; the char* functions below return
-//         strings that meet this criteria 
+//         strings that meet this criteria
 //     serialize - callback for serializing dicts
 //
 // Returns the new interpreter or NULL on OOM.

@@ -255,7 +255,7 @@ static bool eval(GCodeInterpreter* interp, const GCodeNode* input,
                  GCodeVal* output);
 
 static inline int compare_floats(const GCodeVal* n1, const GCodeVal* n2) {
-    double f1 = gcode_float_cast(n1);    
+    double f1 = gcode_float_cast(n1);
     double f2 = gcode_float_cast(n2);
     if (f1 < f2)
         return -1;
@@ -681,7 +681,8 @@ static inline bool buffer_field(GCodeInterpreter* interp, const char* text) {
     if (interp->field_count == interp->field_limit) {
         size_t new_limit =
             interp->field_limit ? interp->field_limit * 2 : 16;
-        interp->field_buf = realloc(interp->field_buf, new_limit * sizeof(char*));
+        interp->field_buf = realloc(interp->field_buf,
+                                    new_limit * sizeof(char*));
         if (!interp->field_buf) {
             interp->field_count = interp->field_limit = 0;
             EMIT_ERROR(interp, "Out of memory (buffer_field)");

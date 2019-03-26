@@ -808,7 +808,7 @@ void gcode_lexer_scan(GCodeLexer* lexer, const char* buffer, size_t length) {
 
                 case ENTER_EXPR:
                     lexer->in_arg_value = true;
-                    enter_expr(lexer);                    
+                    enter_expr(lexer);
                     break;
 
                 default:
@@ -825,7 +825,7 @@ void gcode_lexer_scan(GCodeLexer* lexer, const char* buffer, size_t length) {
                 emit_str(lexer);
                 emit_end_of_statement(lexer);
                 break;
-                
+
             case ';':
                 if (lexer->arg_mode == ARG_RAW)
                     TOKEN_CHAR(ch);
