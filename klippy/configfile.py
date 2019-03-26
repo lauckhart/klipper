@@ -149,8 +149,33 @@ class PrinterConfig:
                 is_dup_field = True
                 lines[lineno] = '#' + lines[lineno]
         return "\n".join(lines)
-    def _build_config_wrapper(self, data):
-        # Strip trailing comments from config
+    def _parse_config_buffer(self, buffer, filename, fileconfig):
+        if not buffer:
+            return
+        data = '\n'.join(buffer)
+        del buffer[:]
+        sbuffer = StringIO.StringIO(data)
+        fileconfig.readfp(sbuffer, filename)
+    def _resolve_include(self, source_filename, include_spec, fileconfig,
+                         visited):
+        dirname = os.path.dirname(source_filename)
+        include_spec = include_spec.strip()
+        include_glob = os.path.join(dirname, include_spec)
+        include_filenames = glob.glob(include_glob)
+        if not include_filenames and not glob.has_magic(include_glob):
+            # Empty set is OK if wildcard but not for direct file reference
+            raise error("Include file '%s' does not exist", include_glob)
+        include_filenames.sort()
+        for include_filename in include_filenames:
+            include_data = self._read_config_file(include_filename)
+            self._parse_config(include_data, include_filename, fileconfig,
+                               visited)
+        return include_filenames
+    def _parse_config(self, data, filename, fileconfig, visited):
+        path = os.path.abspath(filename)
+        if path in visited:
+            raise error("Recursive include of config file '%s'" % (filename))
+        visited.add(path)
         lines = data.split('\n')
         for i, line in enumerate(lines):
             pos = line.find('#')
@@ -160,7 +185,7 @@ class PrinterConfig:
         # Read and process config file
         sfile = StringIO.StringIO(data)
         fileconfig = ConfigParser.RawConfigParser()
-        fileconfig.readfp(sfile)
+        self._parse_config(data, filename, fileconfig, set())
         return ConfigWrapper(self.printer, fileconfig, {}, 'printer')
     def _build_config_string(self, config):
         sfile = StringIO.StringIO()
@@ -210,6 +235,14 @@ class PrinterConfig:
         logging.info("save_config: set [%s] %s = %s", section, option, svalue)
     def remove_section(self, section):
         self.autosave.fileconfig.remove_section(section)
+    def _disallow_include_conflicts(self, regular_data, cfgname, gcode):
+        config = self._build_config_wrapper(regular_data, cfgname)
+        for section in self.autosave.fileconfig.sections():
+            for option in self.autosave.fileconfig.options(section):
+                if config.fileconfig.has_option(section, option):
+                    msg = "SAVE_CONFIG section '%s' option '%s' conflicts " \
+                          "with included value" % (section, option)
+                    raise gcode.error(msg)
     cmd_SAVE_CONFIG_help = "Overwrite config file and restart"
     def cmd_SAVE_CONFIG(self, params):
         if not self.autosave.fileconfig.sections():
@@ -233,6 +266,7 @@ class PrinterConfig:
             logging.exception(msg)
             raise gcode.error(msg)
         regular_data = self._strip_duplicates(regular_data, self.autosave)
+        self._disallow_include_conflicts(regular_data, cfgname, gcode)
         data = regular_data.rstrip() + autosave_data
         # Determine filenames
         datestr = time.strftime("-%Y%m%d_%H%M%S")
