@@ -3,7 +3,7 @@
 # Copyright (C) 2016-2018  Kevin O'Connor <kevin@koconnor.net>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
-import os, re, time, logging, ConfigParser, StringIO
+import os, glob, re, time, logging, ConfigParser, StringIO
 
 error = ConfigParser.Error
 
@@ -177,13 +177,27 @@ class PrinterConfig:
             raise error("Recursive include of config file '%s'" % (filename))
         visited.add(path)
         lines = data.split('\n')
-        for i, line in enumerate(lines):
+        # Buffer lines between includes and parse as a unit so that overrides
+        # in includes apply linearly as they do within a single file
+        buffer = []
+        for line in lines:
+            # Strip trailing comment
             pos = line.find('#')
             if pos >= 0:
-                lines[i] = line[:pos]
-        data = '\n'.join(lines)
-        # Read and process config file
-        sfile = StringIO.StringIO(data)
+                line = line[:pos]
+            # Process include or buffer line
+            mo = ConfigParser.RawConfigParser.SECTCRE.match(line)
+            header = mo and mo.group('header')
+            if header and header.startswith('include '):
+                self._parse_config_buffer(buffer, filename, fileconfig)
+                include_spec = header[8:].strip()
+                self._resolve_include(filename, include_spec, fileconfig,
+                                      visited)
+            else:
+                buffer.append(line)
+        self._parse_config_buffer(buffer, filename, fileconfig)
+        visited.remove(path)
+    def _build_config_wrapper(self, data, filename):
         fileconfig = ConfigParser.RawConfigParser()
         self._parse_config(data, filename, fileconfig, set())
         return ConfigWrapper(self.printer, fileconfig, {}, 'printer')
@@ -192,15 +206,18 @@ class PrinterConfig:
         config.fileconfig.write(sfile)
         return sfile.getvalue().strip()
     def read_config(self, filename):
-        return self._build_config_wrapper(self._read_config_file(filename))
+        return self._build_config_wrapper(self._read_config_file(filename),
+                                          filename)
     def read_main_config(self):
         filename = self.printer.get_start_args()['config_file']
         data = self._read_config_file(filename)
         regular_data, autosave_data = self._find_autosave_data(data)
-        regular_config = self._build_config_wrapper(regular_data)
+        regular_config = self._build_config_wrapper(regular_data, filename)
         autosave_data = self._strip_duplicates(autosave_data, regular_config)
-        self.autosave = self._build_config_wrapper(autosave_data)
-        return self._build_config_wrapper(regular_data + autosave_data)
+        self.autosave = self._build_config_wrapper(autosave_data, filename)
+        self._config = self._build_config_wrapper(regular_data + autosave_data,
+                                                  filename)
+        return self._config
     def check_unused_options(self, config):
         fileconfig = config.fileconfig
         objects = dict(self.printer.lookup_objects())
@@ -260,7 +277,7 @@ class PrinterConfig:
         try:
             data = self._read_config_file(cfgname)
             regular_data, old_autosave_data = self._find_autosave_data(data)
-            config = self._build_config_wrapper(regular_data)
+            config = self._build_config_wrapper(regular_data, cfgname)
         except error as e:
             msg = "Unable to parse existing config on SAVE_CONFIG"
             logging.exception(msg)
