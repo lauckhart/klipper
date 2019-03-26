@@ -19,8 +19,6 @@ class GCodeParser:
     def __init__(self, printer, fd):
         self.printer = printer
         self.fd = fd
-        self.executor = gcode_bridge.Executor(self)
-        self.main_queue = self.executor.create_queue()
         printer.register_event_handler("klippy:ready", self.handle_ready)
         printer.register_event_handler("klippy:shutdown", self.handle_shutdown)
         printer.register_event_handler("klippy:disconnect",
@@ -33,6 +31,8 @@ class GCodeParser:
         if not self.is_fileinput:
             self.fd_handle = self.reactor.register_fd(self.fd,
                                                       self.process_data)
+        self.executor = gcode_bridge.Executor()
+        self.main_queue = self.executor.create_queue()
         self.bytes_read = 0
         self.input_log = collections.deque([], 50)
         # Command handling
@@ -231,8 +231,8 @@ class GCodeParser:
         self.is_processing_data = True
         self.process_commands(self.main_queue)
         self.is_processing_data = False
-    def has_pending():
-        return self.main_queue.queue_size()
+    def has_pending(self):
+        return self.main_queue.has_next()
     def process_pending(self):
         self.process_commands(self.main_queue)
         if self.fd_handle is None:
@@ -292,7 +292,6 @@ class GCodeParser:
     def respond_info(self, msg, log=True):
         if log:
             logging.info(msg)
-        print(len(msg.split('\n')))
         lines = [l.strip() for l in msg.strip().split('\n')]
         self.respond("// " + "\n// ".join(lines))
     def respond_error(self, msg):
@@ -431,7 +430,7 @@ class GCodeParser:
         if key_param not in values:
             raise error("The value '%s' is not valid for %s" % (key_param, key))
         values[key_param](params)
-    traditional_cmd_re = re.compile("[A-Z][0-9]+")
+    traditional_cmd_re = re.compile("[A-Z][\-0-9.]+")
     def describe_command(params):
         cmd = params['#command'] or '?'
         extended = not traditional_cmd_re.fullmatch(cmd)

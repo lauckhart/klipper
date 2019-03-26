@@ -438,7 +438,7 @@ static inline bool eval_operator(GCodeInterpreter* interp,
         int l1 = strlen(s1);
         int l2 = strlen(s2);
         output->type = GCODE_VAL_STR;
-        char* s = gcode_interp_str_alloc(interp, l1 + l2);
+        char* s = gcode_interp_str_alloc(interp, l1 + l2 + 1);
         if (!s)
             return false;
         memcpy(s, s1, l1);
@@ -680,12 +680,13 @@ static inline bool buffer_field(GCodeInterpreter* interp, const char* text) {
     if (interp->field_count == interp->field_limit) {
         size_t new_limit =
             interp->field_limit ? interp->field_limit * 2 : 16;
-        interp->field_buf = realloc(interp->field_buf, new_limit);
+        interp->field_buf = realloc(interp->field_buf, new_limit * sizeof(char*));
         if (!interp->field_buf) {
             interp->field_count = interp->field_limit = 0;
             EMIT_ERROR(interp, "Out of memory (buffer_field)");
             return false;
         }
+        interp->field_limit = new_limit;
     }
 
     interp->field_buf[interp->field_count++] = text;

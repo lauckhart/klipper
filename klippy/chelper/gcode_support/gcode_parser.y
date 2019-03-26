@@ -204,7 +204,7 @@ static void yyerror(const GCodeLocation* location, GCodeParser* parser,
 
 statements:
   %empty
-| statement statements
+| statements statement
 ;
 
 statement:
@@ -214,8 +214,7 @@ statement:
 ;
 
 args:
-  END_OF_STATEMENT          { $$ = NULL; }
-| arg[raw] END_OF_STATEMENT { $$ = gcode_add_next(gcode_str_new("*"), $raw); }
+  arg[raw] END_OF_STATEMENT { $$ = gcode_add_next(gcode_str_new("*"), $raw); }
 | keyvals END_OF_STATEMENT  { $$ = $keyvals; }
 ;
 

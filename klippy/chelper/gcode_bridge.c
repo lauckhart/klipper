@@ -57,6 +57,7 @@ static void ring_entry_free(RingEntry* entry) {
 }
 
 static void ring_add(GCodeQueue* queue, RingEntry entry) {
+    // Grow ring if full
     if (queue->size == queue->ring_size) {
         size_t ring_size = 2 * queue->ring_size;
         RingEntry* new_ring = realloc(queue->ring,
@@ -67,11 +68,13 @@ static void ring_add(GCodeQueue* queue, RingEntry entry) {
             ring_entry_free(&entry);
             return;
         }
-        queue->ring_size = ring_size;
-        size_t move_length =
-            queue->ring_pos + queue->size - queue->ring_size;
-        for (size_t i = 0; i < move_length; i++)
+
+        // Must move entries before current position into new slots
+        for (size_t i = 0; i < queue->ring_pos; i++)
             new_ring[queue->ring_size + i] = new_ring[i];
+
+        queue->ring = new_ring;
+        queue->ring_size = ring_size;
     }
     size_t slot = (queue->ring_pos + queue->size) % queue->ring_size;
     queue->ring[slot] = entry;
@@ -122,7 +125,7 @@ GCodeQueue* gcode_queue_new(GCodeExecutor* executor) {
     queue->parser = gcode_parser_new(queue, parse_error, parse_statement);
 
     queue->ring_size = 32;
-    queue->ring = calloc(queue->ring_size, sizeof(RingEntry));
+    queue->ring = malloc(queue->ring_size * sizeof(RingEntry));
 
     if (!queue->parser || !queue->ring) {
         gcode_queue_delete(queue);
@@ -230,6 +233,6 @@ void gcode_executor_delete(GCodeExecutor* executor) {
 const char* gcode_executor_str(GCodeExecutor* executor, const char* text) {
     size_t length = strlen(text);
     char* new_str = gcode_interp_str_alloc(executor->interp, length + 1);
-    strcpy(new_str, text);
+    strncpy(new_str, text, length);
     return new_str;
 }

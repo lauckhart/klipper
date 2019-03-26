@@ -47,6 +47,12 @@ EXTENDED foo=bar biz=baz dee=dum wee=wum
 EXTENDED foo=bar biz=baz dee=dum wee=wum
 EXTENDED FOO=bar BIZ=baz DEE=dum WEE=wum
 A FOO=bar
+X1 A=
+X1 A=
+X1 A=
+X1 a=
+X1 a=
+X1 a=
 INT A=0 B=0 C=0 D=0
 INT A=10 B=2 C=16 D=8
 INT A=1 B=1 C=-1 D=1 E=1 F=10 G=10 H=-10
@@ -120,13 +126,7 @@ PRECEDENCE E=1
 PARAM A=#<dict:foo>
 PARAM B=#<dict:bar> C=#<dict:bar>
 *** ERROR: Undefined property 'bar'
-*** ERROR: Expressions not allowed in command name (line 208:2)
-*** ERROR: Expected value after parameter name (line 211:6)
-*** ERROR: Expected value after parameter name (line 212:6)
-*** ERROR: Expected value after parameter name (line 213:6)
-*** ERROR: Expected value after parameter name (line 214:10)
-*** ERROR: Expected value after parameter name (line 215:10)
-*** ERROR: Expected value after parameter name (line 216:10)
+*** ERROR: Expressions not allowed in command name (line 214:2)
 *** ERROR: Expected '=' after parameter name (line 217:14)
 *** ERROR: Expected '=' after parameter name (line 218:15)
 *** ERROR: Expected '=' after parameter name (line 219:14)

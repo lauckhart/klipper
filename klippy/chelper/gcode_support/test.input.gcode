@@ -77,6 +77,12 @@ extended {"foo"}=bar {"biz"}= baz {"dee"} =dum {"wee"} = wum
 extended {"f"}{"oo"}=bar {"b"}{"iz"}= baz {"d"}{"ee"} =dum {"w"}{"ee"} = wum
 extended foo={"b"}{"ar"} biz= {"b"}{"az"} dee ={"d"}{"um"} wee = {"w"}{"um"}
 a foo = bar
+x1 a
+x1 a; comment
+x1 a ; comment
+x1 {"a"}
+x1 {"a"}; comment
+x1 {"a"} ; comment
 
 
 ; Single literal expressions
@@ -207,13 +213,7 @@ param a={foo.bar.biz} b={foo["bar"]["biz"]}
 ; Misc
 {0} ; Expr in first field
 
-; Arguments without values
-x1 a
-x1 a; error
-x1 a ; error
-x1 {"a"}
-x1 {"a"}; error
-x1 {"a"} ; error
+; Extended arguments without values
 extended foo
 extended foo ; error
 extended foo; error

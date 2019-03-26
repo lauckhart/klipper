@@ -514,10 +514,9 @@ static inline void end_arg_segment(GCodeLexer* lexer, char ch) {
             if (!lexer->in_arg_value) {
                 TOKEN_START;
                 TOKEN_STOP;
-                ERROR("Expected value after parameter name");
-                if (ch == '\n')
-                    emit_end_of_statement(lexer);
-                return;
+
+                // Empty value
+                emit_str(lexer);
             }
             break;
 

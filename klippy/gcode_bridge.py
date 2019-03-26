@@ -115,7 +115,7 @@ class Queue:
         self.executor.check_fatal()
     def parse_finish(self):
         self.executor._fatal = None
-        self.size = lib.gcode_queue_parse(self.c_queue)
+        self.size = lib.gcode_queue_parse_finish(self.c_queue)
         self.executor.check_fatal()
     def has_next(self):
         return self.size > 0
@@ -144,10 +144,11 @@ class Queue:
 class Executor:
     c_executor = None
 
-    def __init__(self, gcode):
-        self.gcode = gcode
+    def __init__(self):
         self.handle = ffi.new_handle(self)
         self.c_executor = lib.gcode_executor_new(self.handle)
+        self._fatal = None
+        self._has_m112 = False
         if self.c_executor == ffi.NULL:
             raise fatal("Out of memory (initializing G-Code c_executor)")
         self.root_dict = RootDict(self)
