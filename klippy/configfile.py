@@ -91,8 +91,6 @@ class PrinterConfig:
         gcode = self.printer.lookup_object('gcode')
         gcode.register_command("SAVE_CONFIG", self.cmd_SAVE_CONFIG,
                                desc=self.cmd_SAVE_CONFIG_help)
-        gcode.register_command("GET_CONFIG", self.cmd_GET_CONFIG,
-                               desc=self.cmd_GET_CONFIG_help)
     def _read_config_file(self, filename):
         try:
             f = open(filename, 'rb')
@@ -173,7 +171,7 @@ class PrinterConfig:
             self._parse_config(include_data, include_filename, fileconfig,
                                visited)
         return include_filenames
-    def _parse_config(self, data, filename, fileconfig, visited = set()):
+    def _parse_config(self, data, filename, fileconfig, visited):
         path = os.path.abspath(filename)
         if path in visited:
             raise error("Recursive include of config file '%s'" % (filename))
@@ -201,13 +199,11 @@ class PrinterConfig:
         visited.remove(path)
     def _build_config_wrapper(self, data, filename):
         fileconfig = ConfigParser.RawConfigParser()
-        self._parse_config(data, filename, fileconfig)
+        self._parse_config(data, filename, fileconfig, set())
         return ConfigWrapper(self.printer, fileconfig, {}, 'printer')
     def _build_config_string(self, config):
-        return self._build_raw_config_string(config.fileconfig)
-    def _build_raw_config_string(self, config):
         sfile = StringIO.StringIO()
-        config.write(sfile)
+        config.fileconfig.write(sfile)
         return sfile.getvalue().strip()
     def read_config(self, filename):
         return self._build_config_wrapper(self._read_config_file(filename),
@@ -256,38 +252,14 @@ class PrinterConfig:
         logging.info("save_config: set [%s] %s = %s", section, option, svalue)
     def remove_section(self, section):
         self.autosave.fileconfig.remove_section(section)
-    def _respond_named_config(self, config, gcode, section, option):
-        if config.has_section(section):
-            if option:
-                if config.has_option(section, option):
-                    gcode.respond(config.get(section, option))
-                else:
-                    gcode.respond_error("No option '%s' in config section '%s'"
-                                        % (option, section))
-            else:
-                response_config = ConfigParser.RawConfigParser()
-                response_config.add_section(section)
-                for option, value in config.items(section):
-                    response_config.set(section, option, value)
-                gcode.respond(self._build_raw_config_string(response_config))
-        else:
-            gcode.respond_error("No config section '%s'" % (section))
-    cmd_GET_CONFIG_help = "Inspect current configuration"
-    def cmd_GET_CONFIG(self, params):
-        gcode = self.printer.lookup_object('gcode')
-        config = self._config.fileconfig
-        if 'NAME' in params:
-            name = params['NAME']
-            dotpos = name.find('.')
-            if dotpos >= 0:
-                section = name[0:dotpos]
-                option = name[dotpos + 1:]
-            else:
-                section = name
-                option = None
-            self._respond_named_config(config, gcode, section, option)
-        else:
-            gcode.respond(self._build_raw_config_string(config))
+    def _disallow_include_conflicts(self, regular_data, cfgname, gcode):
+        config = self._build_config_wrapper(regular_data, cfgname)
+        for section in self.autosave.fileconfig.sections():
+            for option in self.autosave.fileconfig.options(section):
+                if config.fileconfig.has_option(section, option):
+                    msg = "SAVE_CONFIG section '%s' option '%s' conflicts " \
+                          "with included value" % (section, option)
+                    raise gcode.error(msg)
     cmd_SAVE_CONFIG_help = "Overwrite config file and restart"
     def cmd_SAVE_CONFIG(self, params):
         if not self.autosave.fileconfig.sections():
@@ -311,6 +283,7 @@ class PrinterConfig:
             logging.exception(msg)
             raise gcode.error(msg)
         regular_data = self._strip_duplicates(regular_data, self.autosave)
+        self._disallow_include_conflicts(regular_data, cfgname, gcode)
         data = regular_data.rstrip() + autosave_data
         # Determine filenames
         datestr = time.strftime("-%Y%m%d_%H%M%S")
