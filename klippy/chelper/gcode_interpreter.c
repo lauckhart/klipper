@@ -86,6 +86,7 @@ char* gcode_interp_str_alloc(GCodeInterpreter* interp, size_t size) {
     if (!str_expand(interp, size + 1))
         return NULL;
     char* result = interp->str_buf + interp->str_length;
+    result[size] = '\0';
     interp->str_length += size + 1;
     return result;
 }
@@ -110,7 +111,7 @@ const char* gcode_interp_printf(GCodeInterpreter* interp, const char* format,
     }
 
     if (length > available) {
-        if (!str_expand(interp, length)) {
+        if (!str_expand(interp, length + 1)) {
             va_end(argp);
             return false;
         }
@@ -438,7 +439,7 @@ static inline bool eval_operator(GCodeInterpreter* interp,
         int l1 = strlen(s1);
         int l2 = strlen(s2);
         output->type = GCODE_VAL_STR;
-        char* s = gcode_interp_str_alloc(interp, l1 + l2 + 1);
+        char* s = gcode_interp_str_alloc(interp, l1 + l2);
         if (!s)
             return false;
         memcpy(s, s1, l1);

@@ -11,6 +11,60 @@ ffi, lib = chelper.get_ffi()
 class Dict:
     pass
 
+class StatusObjDict(Dict):
+    def __init__(self, parent, obj_name):
+        self.parent = parent
+        self.obj_name = obj_name
+    def __getitem__(self, key):
+        vals = self._vals(self.parent.eventtime())
+        if vals and key in vals:
+            return vals[key]
+    def __str__(self):
+        return self.serialize(self.parent.eventtime())
+    def serialize(self, eventtime, prefix = ''):
+        vals = self._vals(eventtime)
+        if vals:
+            return '\n'.join([ "{}{} = {}".format(prefix, k, v)
+                             for k, v in vals.items() ])
+        return ''
+    def _vals(self, eventtime):
+        obj = self.parent.obj(self.obj_name)
+        if not obj:
+            return
+        return obj.get_status(eventtime)
+
+class StatusDict(Dict):
+    def __init__(self, printer):
+        self.printer = printer
+        self.obj_dicts = {}
+    def __getitem__(self, key):
+        if key in self.obj_dicts:
+            return self.obj_dicts[key]
+        obj = self.obj(key)
+        if obj:
+            obj_dict = StatusObjDict(self, key)
+            self.obj_dicts[key] = obj_dict
+            return obj_dict
+    def obj(self, name):
+        if self.printer:
+            obj = self.printer.lookup_object(name, None)
+            if obj and hasattr(obj, 'get_status'):
+                return obj
+    def eventtime(self):
+        if self.printer:
+            return self.printer.get_reactor().monotonic()
+    def __str__(self):
+        sections = []
+        if self.printer:
+            for name in self.printer.objects:
+                obj_dict = self[name]
+                if obj_dict:
+                    str = obj_dict.serialize(self.eventtime(),
+                        "{}.".format(name))
+                    if str:
+                        sections.append(str)
+        return "\n\n".join(sections)
+
 class ConfigSectionDict(Dict):
     def __init__(self, parent, section_name):
         self.parent = parent
@@ -30,8 +84,7 @@ class ConfigSectionDict(Dict):
             return self.parent.serialize(raw)
 
 class ConfigDict(Dict):
-    def __init__(self, executor):
-        self.executor = executor
+    def __init__(self):
         self.sections = {}
     def __getitem__(self, key):
         if (self.config.has_section(key)):
@@ -40,17 +93,24 @@ class ConfigDict(Dict):
             return self.sections[key]
     def __str__(self):
         return self.serialize(self.config.fileconfig)
+    def expose_config(self, config):
+        self.config = config
     def serialize(self, rawconfig):
         buf = StringIO.StringIO()
         rawconfig.write(buf)
         return buf.getvalue().strip()
 
 class RootDict(Dict):
-    def __init__(self, executor):
-        self.config_dict = ConfigDict(executor)
+    def __init__(self, printer):
+        self.top_dicts = {
+            'config': ConfigDict(),
+            'status': StatusDict(printer)
+        }
+    def expose_config(self, config):
+        self.top_dicts['config'].expose_config(config)
     def __getitem__(self, key):
-        if key == "config":
-            return self.config_dict
+        if key in self.top_dicts:
+            return self.top_dicts[key]
 
 @ffi.def_extern()
 def gcode_python_fatal(executor, message):
@@ -144,16 +204,16 @@ class Queue:
 class Executor:
     c_executor = None
 
-    def __init__(self):
+    def __init__(self, printer = None):
         self.handle = ffi.new_handle(self)
         self.c_executor = lib.gcode_executor_new(self.handle)
         self._fatal = None
         self._has_m112 = False
         if self.c_executor == ffi.NULL:
             raise fatal("Out of memory (initializing G-Code c_executor)")
-        self.root_dict = RootDict(self)
+        self.root_dict = RootDict(printer)
     def expose_config(self, config):
-        self.root_dict.config_dict.config = config
+        self.root_dict.expose_config(config)
     def create_queue(self):
         return Queue(self)
     def parse(self, data):

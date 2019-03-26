@@ -31,7 +31,7 @@ class GCodeParser:
         if not self.is_fileinput:
             self.fd_handle = self.reactor.register_fd(self.fd,
                                                       self.process_data)
-        self.executor = gcode_bridge.Executor()
+        self.executor = gcode_bridge.Executor(printer)
         self.main_queue = self.executor.create_queue()
         self.bytes_read = 0
         self.input_log = collections.deque([], 50)

@@ -232,7 +232,7 @@ void gcode_executor_delete(GCodeExecutor* executor) {
 
 const char* gcode_executor_str(GCodeExecutor* executor, const char* text) {
     size_t length = strlen(text);
-    char* new_str = gcode_interp_str_alloc(executor->interp, length + 1);
+    char* new_str = gcode_interp_str_alloc(executor->interp, length);
     strncpy(new_str, text, length);
     return new_str;
 }

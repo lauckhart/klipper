@@ -924,7 +924,7 @@ void gcode_lexer_scan(GCodeLexer* lexer, const char* buffer, size_t length) {
                     TOKEN_CHAR(ch);
                 } else {
                     lexer->state = SCAN_IDENTIFIER;
-                    TOKEN_CHAR_UPPER();
+                    TOKEN_CHAR(ch);
                 }
                 break;
             }
@@ -981,7 +981,7 @@ void gcode_lexer_scan(GCodeLexer* lexer, const char* buffer, size_t length) {
 
         case SCAN_IDENTIFIER:
             if (is_ident_char(ch))
-                TOKEN_CHAR_UPPER();
+                TOKEN_CHAR(ch);
             else {
                 if (!emit_keyword_or_identifier(lexer))
                     break;

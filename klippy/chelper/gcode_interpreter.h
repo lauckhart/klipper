@@ -61,11 +61,11 @@ GCodeInterpreter* gcode_interp_new(
 
 // Allocate space on the interpreter string buffer.  No memory management is
 // necessary for these strings but they only persist for the execution of a
-// single statement.
+// single statement.  Adds an extra '\0' byte to terminate the string.
 //
 // Args:
 //     interp - the interpreter
-//     size - # of bytes allocated, with one additional added for '\0'
+//     size - # of bytes allocated (excluding '\0' terminator)
 //
 // Returns a new string or NULL on fatal error.
 char* gcode_interp_str_alloc(GCodeInterpreter* interp, size_t size);
