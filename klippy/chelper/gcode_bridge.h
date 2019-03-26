@@ -27,9 +27,13 @@ typedef struct GCodePyResult {
     size_t count;
 } GCodePyResult;
 
+typedef struct GCodeVal GCodeVal;
+
+// Callbacks (implemented in Python)
 void gcode_python_fatal(void* queue, const char* error);
 void gcode_python_m112(void* queue);
-char* gcode_python_lookup(void* executor, void* dict, const char* key);
+void gcode_python_lookup(void* executor, void* dict, const char* key,
+                         GCodeVal* result);
 char* gcode_python_serialize(void* executor, void* dict);
 
 GCodeQueue* gcode_queue_new(GCodeExecutor* executor);
@@ -40,5 +44,6 @@ void gcode_queue_delete(GCodeQueue* executor);
 
 GCodeExecutor* gcode_executor_new(void* context);
 void gcode_executor_delete(GCodeExecutor* executor);
+const char* gcode_executor_str(GCodeExecutor* executor, const char* text);
 
 #endif

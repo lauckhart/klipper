@@ -391,12 +391,13 @@ static inline gcode_val_type_t force_to_num2(GCodeVal* a, GCodeVal* b) {
         if (a->type == GCODE_VAL_FLOAT) {
             b->type = GCODE_VAL_FLOAT;
             b->float_val = b->int_val;
+            return GCODE_VAL_FLOAT;
         }
         return GCODE_VAL_INT;
     }
     if (a->type == GCODE_VAL_INT) {
         a->type = GCODE_VAL_FLOAT;
-        a->float_val = a->float_val;
+        a->float_val = a->int_val;
     }
     return GCODE_VAL_FLOAT;
 }

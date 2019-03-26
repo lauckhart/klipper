@@ -14,6 +14,7 @@ GCodeNode* gcode_parameter_new(const char* name) {
     if (!n)
         return NULL;
     n->type = GCODE_PARAMETER;
+    n->next = NULL;
     n->name = (char*)(n + 1);
     strncpy((char*)(n + 1), name, l + 1);
     return (GCodeNode*)n;
@@ -24,6 +25,7 @@ GCodeNode* gcode_bool_new(bool value) {
     if (!n)
         return NULL;
     n->type = GCODE_BOOL;
+    n->next = NULL;
     n->value = value;
     return (GCodeNode*)n;
 }
@@ -33,6 +35,7 @@ GCodeNode* gcode_int_new(int64_t value) {
     if (!n)
         return NULL;
     n->type = GCODE_INT;
+    n->next = NULL;
     n->value = value;
     return (GCodeNode*)n;
 }
@@ -42,6 +45,7 @@ GCodeNode* gcode_float_new(double value) {
     if (!n)
         return NULL;
     n->type = GCODE_FLOAT;
+    n->next = NULL;
     n->value = value;
     return (GCodeNode*)n;
 }
@@ -53,6 +57,7 @@ GCodeNode* gcode_operator_new(gcode_operator_type_t type,
     if (!n)
         return NULL;
     n->type = GCODE_OPERATOR;
+    n->next = NULL;
     n->operator = type;
     n->children = children;
     return (GCodeNode*)n;
@@ -65,9 +70,10 @@ GCodeNode* gcode_function_new(const char* name, GCodeNode* children) {
     GCodeFunctionNode* n = malloc(sizeof(GCodeFunctionNode) + l + 1);
     if (!n)
         return NULL;
+    n->type = GCODE_FUNCTION;
+    n->next = NULL;
     n->name = (char*)(n + 1);
     strncpy((char*)(n + 1), name, l + 1);
-    n->type = GCODE_FUNCTION;
     n->children = children;
     return (GCodeNode*)n;
 }

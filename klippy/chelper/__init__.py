@@ -4,7 +4,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import os, logging
-import cffi
+import cffi, sys
 
 
 ######################################################################
@@ -19,15 +19,18 @@ SOURCE_FILES = [
     'kin_cartesian.c', 'kin_corexy.c', 'kin_delta.c', 'kin_polar.c',
     'kin_winch.c', 'kin_extruder.c',
     'gcode_interpreter.c', 'gcode_parser.generated.c', 'gcode_lexer.c',
-    'gcode_keywords.generated.c', 'gcode_ast.c', 'gcode_bridge.c',
-    'gcode_error.c'
+    'gcode_keywords.generated.c', 'gcode_raw_commands.generated.c',
+    'gcode_ast.c', 'gcode_bridge.c', 'gcode_error.c'
 ]
-DEST_LIB = "libchelper.a"
+if hasattr(sys, 'gettotalrefcount'):
+    DEST_LIB = "_chelper_d.so" 
+else:
+    DEST_LIB = "_chelper.so"
 OTHER_FILES = [
     'list.h', 'serialqueue.h', 'stepcompress.h', 'itersolve.h', 'pyhelper.h',
     'kinematics.h',
     'gcode_interpreter.h', 'gcode_parser.h', 'gcode_lexer.h', 'gcode_ast.h',
-    'gcode_bridge.h', 'gcode_error.h'
+    'gcode_bridge.h', 'gcode_error.h', 'gcode_val.h', '__init__.py'
 ]
 
 defs_stepcompress = """
@@ -133,6 +136,34 @@ defs_std = """
 """
 
 defs_gcode = """
+    /*** gcode_val.h ***/
+
+    typedef enum gcode_val_type_t {
+        GCODE_VAL_UNKNOWN,
+        GCODE_VAL_STR,
+        GCODE_VAL_BOOL,
+        GCODE_VAL_INT,
+        GCODE_VAL_FLOAT,
+        GCODE_VAL_DICT
+    } gcode_val_type_t;
+
+    typedef void* dict_handle_t;
+
+    typedef struct GCodeVal {
+        gcode_val_type_t type;
+
+        union {
+            dict_handle_t dict_val;
+            int64_t int_val;
+            double float_val;
+            const char* str_val;
+            bool bool_val;
+        };
+    } GCodeVal;
+
+
+    /*** gcode_bridge.h ***/
+
     typedef struct GCodeQueue GCodeQueue;
     typedef struct GCodeExecutor GCodeExecutor;
 
@@ -150,20 +181,25 @@ defs_gcode = """
         size_t count;
     } GCodePyResult;
 
-    extern "Python+C" void gcode_python_fatal(void* queue, const char* error);
-    extern "Python+C" void gcode_python_m112(void* queue);
-    extern "Python+C" char* gcode_python_lookup(void* executor, void* dict,
-                                                const char* key);
-    extern "Python+C" char* gcode_python_serialize(void* executor, void* dict);
-
     GCodeQueue* gcode_queue_new(GCodeExecutor* executor);
     size_t gcode_queue_parse(GCodeQueue* queue, const char* buf, size_t length);
     size_t gcode_queue_parse_finish(GCodeQueue* queue);
-    size_t gcode_queue_exec_next(GCodeQueue* executor, GCodePyResult* result);
-    void gcode_queue_delete(GCodeQueue* executor);
+    size_t gcode_queue_exec_next(GCodeQueue* queue, GCodePyResult* result);
+    void gcode_queue_delete(GCodeQueue* queue);
 
     GCodeExecutor* gcode_executor_new(void* context);
     void gcode_executor_delete(GCodeExecutor* executor);
+    const char* gcode_executor_str(GCodeExecutor* executor, const char* text);
+
+
+    /*** Callbacks ***/
+
+    extern "Python+C" void gcode_python_fatal(void* queue, const char* error);
+    extern "Python+C" void gcode_python_m112(void* queue);
+    extern "Python+C" void gcode_python_lookup(void* executor, void* dict,
+                                               const char* key,
+                                               GCodeVal* result);
+    extern "Python+C" char* gcode_python_serialize(void* executor, void* dict);
 """
 
 defs_all = [
@@ -181,6 +217,7 @@ ffi_source = """
 #include "serialqueue.h"
 #include "pyhelper.h"
 #include "gcode_bridge.h"
+#include "gcode_val.h"
 """
 
 # Return the list of file modification times

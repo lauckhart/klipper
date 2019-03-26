@@ -16,6 +16,7 @@ SOURCES = \
 	gcode_parser.generated.c \
 	gcode_lexer.c \
 	gcode_keywords.generated.c \
+    gcode_raw_commands.generated.c \
 	gcode_ast.c \
 	gcode_error.c
 
@@ -31,6 +32,9 @@ KEYWORD_DEPS = \
 
 ../gcode_keywords.generated.c: $(KEYWORD_DEPS)
 	./gcode_keyword_gen.sh
+
+../gcode_raw_commands.generated.c: raw_commands.gperf
+	gperf -l raw_commands.gperf > ../gcode_raw_commands.generated.c
 
 out:
 	mkdir out

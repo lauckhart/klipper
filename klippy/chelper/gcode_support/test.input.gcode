@@ -71,7 +71,7 @@ x1 a12 bcd e=123
 X1 A12 Bcd E=123
 X1 a{1 + 2} b={3 + 4} {"c"}5 {"d"}{6}
 m117 Anything should be allowed here; there aren't even comments
-m117 Although {"expressions"} are OK
+echo Although {"expressions"} are OK
 extended foo=bar biz= baz dee =dum wee = wum
 extended {"foo"}=bar {"biz"}= baz {"dee"} =dum {"wee"} = wum
 extended {"f"}{"oo"}=bar {"b"}{"iz"}= baz {"d"}{"ee"} =dum {"w"}{"ee"} = wum
@@ -140,6 +140,7 @@ arith_op a={1 / 1} b={1.1 / 2.2} c={"1" / "2"} d={true / false}
 arith_op a={false / true} b={1 / 0} c={1.1 / 0}
 arith_op a={5 % 2} b={"5" % "2"}
 arith_op a={2 ** 3} b={2.2 ** 3.3} c={"2" ** "3"}
+arith_op a={"2" * 2} b={2 * "2"} c={"2" * 2.0} d={2.0 * "2"}
 
 
 ; Comparison operators

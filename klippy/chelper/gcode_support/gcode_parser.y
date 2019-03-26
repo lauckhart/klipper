@@ -198,6 +198,7 @@ static void yyerror(const GCodeLocation* location, GCodeParser* parser,
 %type <node> exprs
 %type <node> expr_list
 %type <node> string
+%type <node> keyvals
 
 %%
 
@@ -207,14 +208,22 @@ statements:
 ;
 
 statement:
-  STRING[command] args { OOM(add_statement(parser, $command, $args));
-                         free($command); }
+  IDENTIFIER[command] args  { OOM(add_statement(parser, $command, $args));
+                              free($command); }
 | error
 ;
 
 args:
   END_OF_STATEMENT          { $$ = NULL; }
-| arg[a] args[b]            { $$ = gcode_add_next($a, $b); }
+| arg[raw] END_OF_STATEMENT { $$ = gcode_add_next(gcode_str_new("*"), $raw); }
+| keyvals END_OF_STATEMENT  { $$ = $keyvals; }
+;
+
+keyvals:
+  %empty                    { $$ = NULL; }
+| arg[key] arg[val] keyvals[others]
+                            { $$ = gcode_add_next($key, $val);
+                              gcode_add_next($val, $others); }
 ;
 
 arg:

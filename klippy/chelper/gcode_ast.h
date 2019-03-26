@@ -158,6 +158,7 @@ static inline GCodeNode* gcode_statement_new(const char* command,
     if (!n)
         return NULL;
     n->type = GCODE_STATEMENT;
+    n->next = NULL;
     n->args = args;
     n->command = (char*)(n + 1);
     strncpy((char*)(n + 1), command, l + 1);
@@ -178,6 +179,7 @@ static inline GCodeNode* gcode_str_new(const char* value) {
     if (!n)
         return NULL;
     n->type = GCODE_STR;
+    n->next = NULL;
     n->value = (char*)(n + 1);
     strncpy((char*)(n + 1), value, l + 1);
     return (GCodeNode*)n;

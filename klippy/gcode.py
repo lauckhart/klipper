@@ -9,6 +9,9 @@ import homing, kinematics.extruder
 class error(Exception):
     pass
 
+class fatal(Exception):
+    pass
+
 # Parse and handle G-Code commands
 class GCodeParser:
     error = error
@@ -164,32 +167,34 @@ class GCodeParser:
                 self.base_position, self.last_position, self.homing_position,
                 self.speed_factor, self.extrude_factor, self.speed))
         logging.info("\n".join(out))
-    # Execute command
-    def process_command(self, cmd, param_list, need_ack=True):
-        if len(cmd) >= 2 and not cmd[0].isupper() and cmd[1].isdigit():
-            params = { p[0]: p[1:] in param_list}
-        else:
-            params = { p[0]: p[1] in [ p.split('=', 2) in param_list ]}
-        params['#command'] = cmd
-        params['#original'] = "%s %s" % (cmd, " ".join(param_list))
-        # Invoke handler for command
-        self.need_ack = need_ack
-        handler = self.gcode_handlers.get(cmd, self.cmd_default)
-        try:
-            handler(params)
-        except error as e:
-            self.respond_error(str(e))
-            self.reset_last_position()
-            if not need_ack:
+    # Execute commands
+    def process_commands(self, commands, need_ack=True):
+        while commands.has_next():
+            cmd = '?'
+            try:
+                # Evaluate command
+                (cmd, params) = commands.next()
+                params['#command'] = cmd
+
+                # Invoke handler for command
+                self.need_ack = need_ack
+                handler = self.gcode_handlers.get(cmd, self.cmd_default)
+                handler(params)
+            except error as e:
+                self.respond_error(str(e))
+                self.reset_last_position()
+                if not need_ack:
+                    raise
+            except fatal:
                 raise
-        except:
-            msg = 'Internal error on command:"%s"' % (cmd,)
-            logging.exception(msg)
-            self.printer.invoke_shutdown(msg)
-            self.respond_error(msg)
-            if not need_ack:
-                raise
-        self.ack()
+            except Exception as e:
+                msg = 'Internal error on command "%s": "%s"' % (cmd, e)
+                logging.exception(msg)
+                self.printer.invoke_shutdown(msg)
+                self.respond_error(msg)
+                if not need_ack:
+                    raise
+            self.ack()
     m112_r = re.compile('^(?:[nN][0-9]+)?\s*[mM]112(?:\s|$)')
     def process_data(self, eventtime):
         # Read input, separate by newline, and add to main command queue
@@ -224,21 +229,22 @@ class GCodeParser:
                 return
         # Process commands
         self.is_processing_data = True
-        self.main_queue.execute()
+        self.process_commands(self.main_queue)
         self.is_processing_data = False
     def has_pending():
         return self.main_queue.queue_size()
     def process_pending(self):
-        self.main_queue.execute()
+        self.process_commands(self.main_queue)
         if self.fd_handle is None:
             self.fd_handle = self.reactor.register_fd(self.fd,
                                                       self.process_data)
-    def process_batch(self, commands):
+    def process_batch(self, script):
         if self.is_processing_data:
             return False
         self.is_processing_data = True
+        commands = self.executor.parse(script)
         try:
-            self.executor.execute(commands)
+            self.process_commands(commands, need_ack=False)
         except error as e:
             if self.has_pending():
                 self.process_pending()
@@ -250,15 +256,15 @@ class GCodeParser:
         return True
     def run_script_from_command(self, script):
         prev_need_ack = self.need_ack
+        commands = self.executor.parse(script)
         try:
-            self.executor.execute(script)
+            self.process_commands(commands, need_ack=False)
         finally:
             self.need_ack = prev_need_ack
     def run_script(self, script):
-        commands = script.split('\n')
         curtime = None
         while 1:
-            res = self.process_batch(commands)
+            res = self.process_batch(script)
             if res:
                 break
             if curtime is None:
@@ -286,6 +292,7 @@ class GCodeParser:
     def respond_info(self, msg, log=True):
         if log:
             logging.info(msg)
+        print(len(msg.split('\n')))
         lines = [l.strip() for l in msg.strip().split('\n')]
         self.respond("// " + "\n// ".join(lines))
     def respond_error(self, msg):
@@ -296,6 +303,8 @@ class GCodeParser:
         self.respond('!! %s' % (lines[0].strip(),))
         if self.is_fileinput:
             self.printer.request_exit('error_exit')
+    def expose_config(self, config):
+        self.executor.expose_config(config)
     def _respond_state(self, state):
         self.respond_info("Klipper state: %s" % (state,), log=False)
     # Parameter parsing helpers
@@ -304,26 +313,28 @@ class GCodeParser:
                 minval=None, maxval=None, above=None, below=None):
         if name not in params:
             if default is self.sentinel:
-                raise error("Error on '%s': missing %s" % (
-                    params['#original'], name))
+                self.command_error("Error on '{cmd}': missing {name}", params,
+                    name = name)
             return default
         try:
             value = parser(params[name])
         except:
-            raise error("Error on '%s': unable to parse %s" % (
-                params['#original'], params[name]))
+            self.command_error("Error on '{cmd}': unable to parse {val}",
+                params, val = params[name])
         if minval is not None and value < minval:
-            raise error("Error on '%s': %s must have minimum of %s" % (
-                params['#original'], name, minval))
+            self.command_error(
+                "Error on '{cmd}': {name} must have minimum of {minval}",
+                params, name = name, minval = minval)
         if maxval is not None and value > maxval:
-            raise error("Error on '%s': %s must have maximum of %s" % (
-                params['#original'], name, maxval))
+            raise error(
+                "Error on '{cmd}': {name} must have maximum of {maxval}",
+                params, name = name, maxval = maxval)
         if above is not None and value <= above:
-            raise error("Error on '%s': %s must be above %s" % (
-                params['#original'], name, above))
+            self.command_error("Error on '{cmd}': {name} must be above {above}",
+                params, name = name, above = above)
         if below is not None and value >= below:
-            raise error("Error on '%s': %s must be below %s" % (
-                params['#original'], name, below))
+            self.command_error("Error on '{cmd}': {name} must be below {below}",
+                params, name = name, below = below)
         return value
     def get_int(self, name, params, default=sentinel, minval=None, maxval=None):
         return self.get_str(name, params, default, parser=int,
@@ -393,7 +404,7 @@ class GCodeParser:
             # Tn command has to be handled specially
             self.cmd_Tn(params)
             return
-        self.respond_info('Unknown command:"%s"' % (cmd,))
+        self.respond_info('Unknown command "%s"' % (cmd,))
     def cmd_Tn(self, params):
         # Select Tool
         extruders = kinematics.extruder.get_printer_extruders(self.printer)
@@ -420,6 +431,21 @@ class GCodeParser:
         if key_param not in values:
             raise error("The value '%s' is not valid for %s" % (key_param, key))
         values[key_param](params)
+    traditional_cmd_re = re.compile("[A-Z][0-9]+")
+    def describe_command(params):
+        cmd = params['#command'] or '?'
+        extended = not traditional_cmd_re.fullmatch(cmd)
+        if params['*']:
+            params = params['*']
+        else:
+            params = [
+                "%s%s%s" % (key, '=' if extended or len(key) == 1 else '', val)
+                    for (key, val) in params.items()
+            ]
+            params = ' '.join(filter(params, lambda p: p[0] == '#'))
+        return "%s %s" % (cmd, params)
+    def command_error(message, params, **values):
+        error(message.format(cmd = describe_command(params), **values))
     all_handlers = [
         'G1', 'G4', 'G28', 'M18', 'M400',
         'G20', 'M82', 'M83', 'G90', 'G91', 'G92', 'M114', 'M220', 'M221',
@@ -453,11 +479,10 @@ class GCodeParser:
             if 'F' in params:
                 speed = float(params['F'])
                 if speed <= 0.:
-                    raise error("Invalid speed in '%s'" % (
-                        params['#original'],))
+                    self.command_error("Invalid speed in '{cmd}'", params)
                 self.speed = speed
         except ValueError as e:
-            raise error("Unable to parse move '%s'" % (params['#original'],))
+            self.command_error("Unable to parse move '{cmd}'", params)
         try:
             self.move_with_transform(self.last_position,
                                      self.speed * self.speed_factor)
@@ -647,7 +672,7 @@ class GCodeParser:
         self.request_restart('firmware_restart')
     cmd_ECHO_when_not_ready = True
     def cmd_ECHO(self, params):
-        self.respond_info(params['#original'], log=False)
+        self.respond_info(params['*'], log=False)
     cmd_STATUS_when_not_ready = True
     cmd_STATUS_help = "Report the printer status"
     def cmd_STATUS(self, params):

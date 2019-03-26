@@ -4,9 +4,6 @@
 // (pure text with all interpreted constructs removed).  Callers can register
 // functions to perform (possibly recursive) environmental lookup.
 //
-// Current there is a 1:1 correlation between input statements and output
-// lines.  This may change in the future.
-//
 // Copyright (C) 2019 Greg Lauckhart <greg@lauckhart.com>
 //
 // This file may be distributed under the terms of the GNU GPLv3 license.
@@ -16,34 +13,7 @@
 
 #include "gcode_ast.h"
 #include "gcode_error.h"
-
-#include <stdbool.h>
-#include <stddef.h>
-
-typedef void* dict_handle_t;
-
-// Type system for G-Code values produced by the interpreter
-typedef enum gcode_val_type_t {
-    GCODE_VAL_UNKNOWN,
-    GCODE_VAL_STR,
-    GCODE_VAL_BOOL,
-    GCODE_VAL_INT,
-    GCODE_VAL_FLOAT,
-    GCODE_VAL_DICT
-} gcode_val_type_t;
-
-// Each value produced by the interpreter is encoded using this class.
-typedef struct GCodeVal {
-    gcode_val_type_t type;
-
-    union {
-        dict_handle_t dict_val;
-        int64_t int_val;
-        double float_val;
-        const char* str_val;
-        bool bool_val;
-    };
-} GCodeVal;
+#include "gcode_val.h"
 
 typedef struct GCodeInterpreter GCodeInterpreter;
 
