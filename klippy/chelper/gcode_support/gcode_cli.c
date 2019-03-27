@@ -57,17 +57,17 @@ bool lookup(void* context, const GCodeVal* key, dict_handle_t parent,
     // { FOO: { BAR: { BIZ: "baz" } } }
     CLI* cli = (CLI*)context;
     if (!parent) {
-        if (!strcmp(gcode_str_cast(cli->interp, key), "FOO")) {
+        if (!strcmp(gcode_str_cast(cli->interp, key), "foo")) {
             result->type = GCODE_VAL_DICT;
             result->dict_val = "foo";
         }
     } else if (!strcmp((const char*)parent, "foo")) {
-        if (!strcmp(gcode_str_cast(cli->interp, key), "BAR")) {
+        if (!strcmp(gcode_str_cast(cli->interp, key), "bar")) {
             result->type = GCODE_VAL_DICT;
             result->dict_val = "bar";
         }
     } else if (!strcmp((const char*)parent, "bar")) {
-        if (!strcmp(gcode_str_cast(cli->interp, key), "BIZ")) {
+        if (!strcmp(gcode_str_cast(cli->interp, key), "biz")) {
             result->type = GCODE_VAL_STR;
             result->str_val = "baz";
         }

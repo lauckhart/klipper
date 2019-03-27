@@ -66,23 +66,36 @@ N1 G1 X0 Y0 ; Comment
 
 ; Argument formats
 
+; Traditional
 x1 b={3+4}
 x1 a12 bcd e=123
 X1 A12 Bcd E=123
 X1 a{1 + 2} b={3 + 4} {"c"}5 {"d"}{6}
-m117 Anything should be allowed here; there aren't even comments
-echo Although {"expressions"} are OK
-extended foo=bar biz= baz dee =dum wee = wum
-extended {"foo"}=bar {"biz"}= baz {"dee"} =dum {"wee"} = wum
-extended {"f"}{"oo"}=bar {"b"}{"iz"}= baz {"d"}{"ee"} =dum {"w"}{"ee"} = wum
-extended foo={"b"}{"ar"} biz= {"b"}{"az"} dee ={"d"}{"um"} wee = {"w"}{"um"}
-a foo = bar
 x1 a
 x1 a; comment
 x1 a ; comment
 x1 {"a"}
 x1 {"a"}; comment
 x1 {"a"} ; comment
+
+; Extended
+extended foo=bar biz= baz dee =dum wee = wum
+extended "foo"=bar "biz"= baz "dee" =dum "wee" = wum
+extended "f""oo"=bar "b""iz"= baz "d""ee" =dum "w""ee" = wum
+extended foo="b""ar" biz= "b""az" dee ="d""um" wee = "w""um"
+extended {"foo"}=bar {"biz"}= baz {"dee"} =dum {"wee"} = wum
+extended {"f"}{"oo"}=bar {"b"}{"iz"}= baz {"d"}{"ee"} =dum {"w"}{"ee"} = wum
+extended foo={"b"}{"ar"} biz= {"b"}{"az"} dee ={"d"}{"um"} wee = {"w"}{"um"}
+extended "f"{"oo"}=bar "b"{"iz"}= baz "d"{"ee"} =dum "w"{"ee"} = wum
+extended foo="b"{"ar"} biz= "b"{"az"} dee ="d"{"um"} wee = "w"{"um"}
+extended {"f"}"oo"=bar {"b"}"iz"= baz {"d"}"ee" =dum {"w"}"ee" = wum
+extended foo={"b"}"ar" biz= {"b"}"az" dee ={"d"}"um" wee = {"w"}"um"
+
+a foo = bar
+
+; Raw
+m117 Anything should be allowed here; there aren't even comments
+echo Although {"expressions"} are OK
 
 
 ; Single literal expressions
@@ -204,13 +217,15 @@ precedence e={-1 + 2}
 ; Parameter references, lookup & dict serialization
 
 param a={foo}
-param b={foo.bar} c={foo["BAR"]}
+param b={foo.bar} c={foo["bar"]}
 param a={foo.bar.biz} b={foo["bar"]["biz"]}
 
 
 ; Lexer errors (TODO)
 
+
 ; Misc
+ECHO ERRORS FOLLOW ; Delineate where we expect errors in output
 {0} ; Expr in first field
 
 ; Extended arguments without values
@@ -223,6 +238,7 @@ extended {"foo"};error
 extended foo=
 extended foo= ; error
 extended foo=; error
+extended =foo
 
 
 ; Parser errors (TODO)
@@ -232,7 +248,7 @@ extended foo=; error
 
 ; Invalid lookups
 param a={bar}
-param a={foo["bar"]}
+param a={foo["BAR"]}
 param a={foo.biz}
 param a={foo["biz"]}
 param a={foo[1]}

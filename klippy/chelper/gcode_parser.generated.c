@@ -597,12 +597,12 @@ static const yytype_uint16 yyrline[] =
 static const char *const yytname[] =
 {
   "$end", "error", "$undefined", "IDENTIFIER", "STRING", "INTEGER",
-  "FLOAT", "ERROR", "SPECIAL", "END_OF_STATEMENT", "\"OR\"", "\"AND\"",
+  "FLOAT", "ERROR", "SPECIAL", "END_OF_STATEMENT", "\"or\"", "\"and\"",
   "\"==\"", "\"~\"", "\"+\"", "\"-\"", "\"%\"", "\"**\"", "\"*\"", "\"/\"",
-  "\"<\"", "\">\"", "\"<=\"", "\">=\"", "\"NOT\"", "\"IF\"", "\"ELSE\"",
-  "\".\"", "\",\"", "\"(\"", "\")\"", "\"NAN\"", "\"INF\"", "\"TRUE\"",
-  "\"FALSE\"", "\"[\"", "\"]\"", "\"{\"", "\"}\"", "\"STR\"", "\"INT\"",
-  "\"FLOAT\"", "\"BOOLEAN\"", "UNARY", "BRIDGE", "$accept", "statements",
+  "\"<\"", "\">\"", "\"<=\"", "\">=\"", "\"not\"", "\"if\"", "\"else\"",
+  "\".\"", "\",\"", "\"(\"", "\")\"", "\"nan\"", "\"inf\"", "\"true\"",
+  "\"false\"", "\"[\"", "\"]\"", "\"{\"", "\"}\"", "\"str\"", "\"int\"",
+  "\"float\"", "\"boolean\"", "UNARY", "BRIDGE", "$accept", "statements",
   "statement", "args", "keyvals", "arg", "expr", "string", "exprs",
   "expr_list", YY_NULLPTR
 };

@@ -322,7 +322,7 @@ class GCodeParser:
         if name not in params:
             if default is self.sentinel:
                 self.command_error("Error on '{cmd}': missing {name}", params,
-                    name = name)
+                                   name = name)
             return default
         try:
             value = parser(params[name])
@@ -410,6 +410,7 @@ class GCodeParser:
             return
         if cmd[0] == 'T' and len(cmd) > 1 and cmd[1].isdigit():
             # Tn command has to be handled specially
+            params['T'] = int(cmd[1:])
             self.cmd_Tn(params)
             return
         self.respond_info('Unknown command "%s"' % (cmd,))
@@ -439,21 +440,23 @@ class GCodeParser:
         if key_param not in values:
             raise error("The value '%s' is not valid for %s" % (key_param, key))
         values[key_param](params)
-    traditional_cmd_re = re.compile("[A-Z][\-0-9.]+")
-    def describe_command(params):
+    traditional_cmd_re = re.compile("[A-Z][0-9]+\Z")
+    def describe_command(self, params):
         cmd = params['#command'] or '?'
-        extended = not traditional_cmd_re.fullmatch(cmd)
-        if params['*']:
+        params = { k: v for k, v in params.items() if k[0] != '#' }
+        if '*' in params and len(params) == 1:
             params = params['*']
         else:
+            extended = not self.traditional_cmd_re.match(cmd)
+            sep = '=' if extended else ''
             params = [
-                "%s%s%s" % (key, '=' if extended or len(key) == 1 else '', val)
+                "%s%s%s" % (key, sep, val)
                     for (key, val) in params.items()
             ]
-            params = ' '.join(filter(params, lambda p: p[0] == '#'))
+            params = ' '.join(params)
         return "%s %s" % (cmd, params)
-    def command_error(message, params, **values):
-        error(message.format(cmd = describe_command(params), **values))
+    def command_error(self, message, params, **kwargs):
+        raise error(message.format(cmd = self.describe_command(params), **kwargs))
     all_handlers = [
         'G1', 'G4', 'G28', 'M18', 'M400',
         'G20', 'M82', 'M83', 'G90', 'G91', 'G92', 'M114', 'M220', 'M221',

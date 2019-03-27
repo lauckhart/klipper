@@ -143,8 +143,8 @@ static void yyerror(const GCodeLocation* location, GCodeParser* parser,
 // Terminates current statement
 %token <keyword> END_OF_STATEMENT
 
-%token <keyword> OR "OR"
-%token <keyword> AND "AND"
+%token <keyword> OR "or"
+%token <keyword> AND "and"
 %token <keyword> EQUAL "=="
 %token <keyword> CONCAT "~"
 %token <keyword> PLUS "+"
@@ -157,25 +157,25 @@ static void yyerror(const GCodeLocation* location, GCodeParser* parser,
 %token <keyword> GT ">"
 %token <keyword> LTE "<="
 %token <keyword> GTE ">="
-%token <keyword> NOT "NOT"
-%token <keyword> IF "IF"
-%token <keyword> ELSE "ELSE"
+%token <keyword> NOT "not"
+%token <keyword> IF "if"
+%token <keyword> ELSE "else"
 %token <keyword> DOT "."
 %token <keyword> COMMA ","
 %token <keyword> LPAREN "("
 %token <keyword> RPAREN ")"
-%token <keyword> NAN "NAN"
-%token <keyword> INF "INF"
-%token <keyword> TRUE "TRUE"
-%token <keyword> FALSE "FALSE"
+%token <keyword> NAN "nan"
+%token <keyword> INF "inf"
+%token <keyword> TRUE "true"
+%token <keyword> FALSE "false"
 %token <keyword> LBRACKET "["
 %token <keyword> RBRACKET "]"
 %token <keyword> LBRACE "{"
 %token <keyword> RBRACE "}"
-%token <keyword> STR_CAST "STR"
-%token <keyword> INT_CAST "INT"
-%token <keyword> FLOAT_CAST "FLOAT"
-%token <keyword> BOOL_CAST "BOOLEAN"
+%token <keyword> STR_CAST "str"
+%token <keyword> INT_CAST "int"
+%token <keyword> FLOAT_CAST "float"
+%token <keyword> BOOL_CAST "boolean"
 
 %left OR
 %left AND
@@ -241,7 +241,7 @@ expr:
 | FALSE                     { OOM($$ = gcode_bool_new(false)); }
 | INF                       { OOM($$ = gcode_float_new(INFINITY)); }
 | NAN                       { OOM($$ = gcode_float_new(NAN)); }
-| "NOT" expr[a]             { OOM($$ = newop1(GCODE_NOT, $a)); }
+| NOT expr[a]               { OOM($$ = newop1(GCODE_NOT, $a)); }
 | "-" expr[a] %prec UNARY   { OOM($$ = newop1(GCODE_NEGATE, $a)); }
 | "+" expr[a] %prec UNARY   { OOM($$ = $a); }
 | expr[a] "+" expr[b]       { OOM($$ = newop2(GCODE_ADD, $a, $b)); }
