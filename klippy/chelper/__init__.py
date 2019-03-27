@@ -8,7 +8,7 @@ import cffi, sys
 
 
 ######################################################################
-# libchelper.so compiling
+# _chelper.so compiling
 ######################################################################
 
 COMPILE_CMD = ("gcc -Wall -g -O2 -shared -fPIC"
@@ -28,7 +28,7 @@ else:
     DEST_LIB = "_chelper.so"
 OTHER_FILES = [
     'list.h', 'serialqueue.h', 'stepcompress.h', 'itersolve.h', 'pyhelper.h',
-    'kinematics.h',
+    'kinematics.h', '__init__.py',
     'gcode_interpreter.h', 'gcode_parser.h', 'gcode_lexer.h', 'gcode_ast.h',
     'gcode_bridge.h', 'gcode_error.h', 'gcode_val.h', '__init__.py'
 ]
@@ -284,7 +284,7 @@ HC_CMD = "sudo %s/hub-ctrl -h 0 -P 2 -p %d"
 def build_hub_ctrl(srcdir, target, sources):
     srcfiles = [os.path.join(srcdir, fname) for fname in sources]
     destlib = os.path.join(srcdir, target)
-    os.system(HC_CMD % (destlib, ' '.join(srcfiles)))
+    os.system(HC_COMPILE_CMD % (destlib, ' '.join(srcfiles)))
 
 def run_hub_ctrl(enable_power):
     srcdir = os.path.dirname(os.path.realpath(__file__))
