@@ -458,8 +458,12 @@ class GCodeParser:
             params = ' '.join(params)
         return "%s %s" % (cmd, params)
     def command_error(self, message, params, **kwargs):
+<<<<<<< HEAD
         raise error(message.format(cmd = self.describe_command(params),
                                    **kwargs))
+=======
+        raise error(message.format(cmd = self.describe_command(params), **kwargs))
+>>>>>>> gcode-eval
     all_handlers = [
         'G1', 'G4', 'G28', 'M18', 'M400',
         'G20', 'M82', 'M83', 'G90', 'G91', 'G92', 'M114', 'M220', 'M221',
