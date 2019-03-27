@@ -102,15 +102,25 @@ class ConfigDict(Dict):
 
 class RootDict(Dict):
     def __init__(self, printer):
+        self.config = ConfigDict()
+        self.input_frames = []
         self.top_dicts = {
-            'config': ConfigDict(),
+            'config': self.config,
             'status': StatusDict(printer)
         }
     def expose_config(self, config):
-        self.top_dicts['config'].expose_config(config)
+        self.config.expose_config(config)
+    def expose_inputs(self, inputs):
+        self.input_frames.append(inputs)
+    def remove_inputs(self):
+        self.input_frames.pop()
     def __getitem__(self, key):
         if key in self.top_dicts:
             return self.top_dicts[key]
+        if self.input_frames:
+            inputs = self.input_frames[-1]
+            if key in inputs:
+                return inputs[key]
 
 @ffi.def_extern()
 def gcode_python_fatal(executor, message):
@@ -214,6 +224,10 @@ class Executor:
         self.root_dict = RootDict(printer)
     def expose_config(self, config):
         self.root_dict.expose_config(config)
+    def expose_inputs(self, inputs):
+        self.root_dict.expose_inputs(inputs)
+    def remove_inputs(self):
+        self.root_dict.remove_inputs()
     def create_queue(self):
         return Queue(self)
     def parse(self, data):

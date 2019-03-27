@@ -263,12 +263,14 @@ class GCodeParser:
             self.process_pending()
         self.is_processing_data = False
         return True
-    def run_script_from_command(self, script):
+    def run_script_from_command(self, script, params = {}):
         prev_need_ack = self.need_ack
         commands = self.executor.parse(script)
+        self.executor.expose_inputs(params)
         try:
             self.process_commands(commands, need_ack=False)
         finally:
+            self.executor.remove_inputs()
             self.need_ack = prev_need_ack
     def run_script(self, script):
         curtime = None
