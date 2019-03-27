@@ -179,7 +179,6 @@ GCodeLexer* gcode_lexer_new(
     lexer->bridge = bridge;
     lexer->end_of_statement = end_of_statement;
 
-    lexer->expr_nesting = 0;
     lexer->token_str = NULL;
     lexer->token_length = lexer->token_limit = 0;
 
@@ -513,7 +512,7 @@ static inline bool add_digit(GCodeLexer* lexer, uint8_t value, int16_t base,
 static inline bool enter_expr(GCodeLexer* lexer) {
     if (emit_char_symbol(lexer, ENTER_EXPR)) {
         lexer->state = SCAN_EXPR;
-        lexer->expr_nesting = 0;
+        lexer->expr_nesting = 1;
         return true;
     }
     return false;
@@ -598,6 +597,7 @@ void gcode_lexer_scan(GCodeLexer* lexer, const char* buffer, size_t length) {
     for (char ch = *buffer; buffer < end; ch = (*++buffer)) {
         switch (lexer->state) {
         case SCAN_NEWLINE:
+            lexer->expr_nesting = 0;
             switch (ch) {
             case 'N':
             case 'n':
@@ -719,7 +719,7 @@ void gcode_lexer_scan(GCodeLexer* lexer, const char* buffer, size_t length) {
 
                 case ARG_EXTENDED:
                     lexer->in_arg_value = false;
-                    lexer->after_str = SCAN_EXTENDED_KEY;
+                    lexer->after_str = SCAN_AFTER_EXPR;
                     lexer->state = SCAN_STR;
                     break;
 
@@ -795,7 +795,7 @@ void gcode_lexer_scan(GCodeLexer* lexer, const char* buffer, size_t length) {
 
             case '"':
                 if (emit_possible_str(lexer) && emit_bridge(lexer)) {
-                    lexer->after_str = SCAN_EXTENDED_KEY;
+                    lexer->after_str = SCAN_AFTER_EXPR;
                     lexer->state = SCAN_STR;
                 }
                 break;
@@ -839,7 +839,7 @@ void gcode_lexer_scan(GCodeLexer* lexer, const char* buffer, size_t length) {
 
             case '"':
                 lexer->in_arg_value = true;
-                lexer->after_str = SCAN_ARG_VALUE;
+                lexer->after_str = SCAN_AFTER_EXPR;
                 lexer->state = SCAN_STR;
                 break;
 
@@ -908,7 +908,7 @@ void gcode_lexer_scan(GCodeLexer* lexer, const char* buffer, size_t length) {
 
             case '"':
                 if (emit_possible_str(lexer) && emit_bridge(lexer)) {
-                    lexer->after_str = SCAN_ARG_VALUE;
+                    lexer->after_str = SCAN_AFTER_EXPR;
                     lexer->state = SCAN_STR;
                 }
                 break;
@@ -958,6 +958,7 @@ void gcode_lexer_scan(GCodeLexer* lexer, const char* buffer, size_t length) {
                 break;
 
             case EXIT_EXPR:
+                lexer->expr_nesting = 0;
                 if (EMIT_CHAR_SYMBOL())
                     lexer->state = SCAN_AFTER_EXPR;
                 break;
@@ -1023,11 +1024,15 @@ void gcode_lexer_scan(GCodeLexer* lexer, const char* buffer, size_t length) {
 
                 default:
                     if (lexer->arg_mode == ARG_TRADITIONAL) {
-                        if (lexer->in_arg_value)
+                        if (lexer->in_arg_value) {
+                            if (ch != '"' && ch != ENTER_EXPR)
+                                emit_bridge(lexer);
                             lexer->state = SCAN_ARG_VALUE;
-                        else
+                        } else
                             lexer->state = SCAN_AFTER_TRADITIONAL_KEY;
                     } else {
+                        if (ch != '"' && ch != ENTER_EXPR)
+                            emit_bridge(lexer);
                         if (lexer->in_arg_value)
                             lexer->state = SCAN_ARG_VALUE;
                         else

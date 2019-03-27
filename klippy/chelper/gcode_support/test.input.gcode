@@ -139,6 +139,8 @@ str a={"\U00000061"} b={"🍺"} c={"\U0001f37a"}
 bridge a=foo{"bar"} b={"foo"}bar c=foo{"bar"}biz d={"foo"}{"bar"}
 bridge a=foo{"bar"}{"biz"}baz b={"foo"}bar{"biz"}
 bridge a=foo{1} b={1}bar c=foo{1}biz d={1}{2} e=foo{1}{2}baz f={1}bar{2}
+bridge a=foo"bar" b="foo"bar c=foo"bar"biz d="foo""bar"
+bridge a=foo"bar""biz"baz b="foo"bar"biz"
 
 
 ; Boolean operators

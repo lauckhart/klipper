@@ -40,19 +40,26 @@ X1 B=7
 X1 A=12 B=cd E=123
 X1 A=12 B=cd E=123
 X1 A=3 B=7 c=5 d=6
-M117 *=Anything should be allowed here; there aren't even comments
-ECHO *=Although expressions are OK
+X1 A=
+X1 A=
+X1 A=
+X1 a=
+X1 a=
+X1 a=
 EXTENDED FOO=bar BIZ=baz DEE=dum WEE=wum
-EXTENDED foo=bar biz=baz dee=dum wee=wum
-EXTENDED foo=bar biz=baz dee=dum wee=wum
+EXTENDED foobar=bizbaz dee=dum wee=wum
+EXTENDED foobar=bizbaz dee=dum wee=wum
+EXTENDED FOO=bar BIZ=baz DEE=dum WEE=wum
+EXTENDED foobar=bizbaz dee=dum wee=wum
+EXTENDED foobar=bizbaz dee=dum wee=wum
+EXTENDED FOO=bar BIZ=baz DEE=dum WEE=wum
+EXTENDED foobar=bizbaz dee=dum wee=wum
+EXTENDED FOO=bar BIZ=baz DEE=dum WEE=wum
+EXTENDED foobar=bizbaz dee=dum wee=wum
 EXTENDED FOO=bar BIZ=baz DEE=dum WEE=wum
 A FOO=bar
-X1 A=
-X1 A=
-X1 A=
-X1 a=
-X1 a=
-X1 a=
+M117 *=Anything should be allowed here; there aren't even comments
+ECHO *=Although expressions are OK
 INT A=0 B=0 C=0 D=0
 INT A=10 B=2 C=16 D=8
 INT A=1 B=1 C=-1 D=1 E=1 F=10 G=10 H=-10
@@ -77,6 +84,8 @@ STR A=a B=🍺 C=🍺
 BRIDGE A=foobar B=foobar C=foobarbiz D=foobar
 BRIDGE A=foobarbizbaz B=foobarbiz
 BRIDGE A=foo1 B=1bar C=foo1biz D=12 E=foo12baz F=1bar2
+BRIDGE A=foobar B=foobar C=foobarbiz D=foobar
+BRIDGE A=foobarbizbaz B=foobarbiz
 BOOL_OP A=false B=true C=true D=false E=false
 BOOL_OP F=true
 BOOL_OP A=true B=false C=false
@@ -125,22 +134,24 @@ PRECEDENCE D=true
 PRECEDENCE E=1
 PARAM A=#<dict:foo>
 PARAM B=#<dict:bar> C=#<dict:bar>
-*** ERROR: Undefined property 'bar'
-*** ERROR: Expressions not allowed in command name (line 214:2)
-*** ERROR: Expected '=' after parameter name (line 217:14)
-*** ERROR: Expected '=' after parameter name (line 218:15)
-*** ERROR: Expected '=' after parameter name (line 219:14)
-*** ERROR: Expected '=' after parameter name (line 220:18)
-*** ERROR: Expected '=' after parameter name (line 221:19)
-*** ERROR: Expected '=' after parameter name (line 222:18)
-*** ERROR: Expected '=' after parameter name (line 223:15)
-*** ERROR: Expected '=' after parameter name (line 224:16)
-*** ERROR: Expected '=' after parameter name (line 225:15)
-*** ERROR: Undefined parameter 'BAR'
-*** ERROR: Undefined property 'bar'
-*** ERROR: Undefined property 'BIZ'
+PARAM A=baz B=baz
+ECHO *=ERRORS FOLLOW ; Delineate where we expect errors in output
+*** ERROR: Expressions not allowed in command name (line 231:2)
+*** ERROR: Expected '=' after parameter name (line 234:14)
+*** ERROR: Expected '=' after parameter name (line 235:15)
+*** ERROR: Expected '=' after parameter name (line 236:14)
+*** ERROR: Expected '=' after parameter name (line 237:18)
+*** ERROR: Expected '=' after parameter name (line 238:19)
+*** ERROR: Expected '=' after parameter name (line 239:18)
+*** ERROR: Expected '=' after parameter name (line 240:15)
+*** ERROR: Expected '=' after parameter name (line 241:16)
+*** ERROR: Expected '=' after parameter name (line 242:15)
+*** ERROR: Expected parameter name before '=' (line 242:15)
+*** ERROR: Undefined parameter 'bar'
+*** ERROR: Undefined property 'BAR'
+*** ERROR: Undefined property 'biz'
 *** ERROR: Undefined property 'biz'
 *** ERROR: Undefined property '1'
-*** ERROR: Undefined property 'BAR'
+*** ERROR: Undefined property 'bar'
 *** ERROR: Undefined property 'bar'
 GOODBYE
