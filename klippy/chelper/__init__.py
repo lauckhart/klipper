@@ -17,10 +17,7 @@ COMPILE_CMD = ("gcc -Wall -g -O2 -shared -fPIC"
 SOURCE_FILES = [
     'pyhelper.c', 'serialqueue.c', 'stepcompress.c', 'itersolve.c',
     'kin_cartesian.c', 'kin_corexy.c', 'kin_delta.c', 'kin_polar.c',
-    'kin_winch.c', 'kin_extruder.c',
-    'gcode_interpreter.c', 'gcode_parser.generated.c', 'gcode_lexer.c',
-    'gcode_keywords.generated.c', 'gcode_raw_commands.generated.c',
-    'gcode_ast.c', 'gcode_bridge.c', 'gcode_error.c'
+    'kin_winch.c', 'kin_extruder.c', 'gcode_lexer.c'
 ]
 if hasattr(sys, 'gettotalrefcount'):
     DEST_LIB = "_chelper_d.so"
@@ -28,9 +25,7 @@ else:
     DEST_LIB = "_chelper.so"
 OTHER_FILES = [
     'list.h', 'serialqueue.h', 'stepcompress.h', 'itersolve.h', 'pyhelper.h',
-    'kinematics.h', '__init__.py',
-    'gcode_interpreter.h', 'gcode_parser.h', 'gcode_lexer.h', 'gcode_ast.h',
-    'gcode_bridge.h', 'gcode_error.h', 'gcode_val.h', '__init__.py'
+    'kinematics.h', '__init__.py', 'gcode_lexer.h'
 ]
 
 defs_stepcompress = """
@@ -136,70 +131,29 @@ defs_std = """
 """
 
 defs_gcode = """
-    /*** gcode_val.h ***/
+    typedef struct GCodeLocation {
+        uint32_t first_line;
+        uint32_t first_column;
+        uint32_t last_line;
+        uint32_t last_column;
+    } GCodeLocation;
 
-    typedef enum gcode_val_type_t {
-        GCODE_VAL_UNKNOWN,
-        GCODE_VAL_STR,
-        GCODE_VAL_BOOL,
-        GCODE_VAL_INT,
-        GCODE_VAL_FLOAT,
-        GCODE_VAL_DICT
-    } gcode_val_type_t;
+    typedef struct GCodeLexer GCodeLexer;
 
-    typedef void* dict_handle_t;
+    GCodeLexer* gcode_lexer_new(void* context, GCodeLocation* location);
+    void gcode_lexer_scan(GCodeLexer* lexer, const char* data, size_t length);
+    void gcode_lexer_finish(GCodeLexer* lexer);
+    void gcode_lexer_reset(GCodeLexer* lexer);
+    void gcode_lexer_delete(GCodeLexer* lexer);
 
-    typedef struct GCodeVal {
-        gcode_val_type_t type;
-
-        union {
-            dict_handle_t dict_val;
-            int64_t int_val;
-            double float_val;
-            const char* str_val;
-            bool bool_val;
-        };
-    } GCodeVal;
-
-
-    /*** gcode_bridge.h ***/
-
-    typedef struct GCodeQueue GCodeQueue;
-    typedef struct GCodeExecutor GCodeExecutor;
-
-    typedef enum {
-        GCODE_PY_EMPTY,
-        GCODE_PY_ERROR,
-        GCODE_PY_COMMAND
-    } gcode_py_result_type_t;
-
-    typedef struct GCodePyResult {
-        gcode_py_result_type_t type;
-        const char* error;
-        const char* command;
-        const char** parameters;
-        size_t count;
-    } GCodePyResult;
-
-    GCodeQueue* gcode_queue_new(GCodeExecutor* executor);
-    size_t gcode_queue_parse(GCodeQueue* queue, const char* buf, size_t length);
-    size_t gcode_queue_parse_finish(GCodeQueue* queue);
-    size_t gcode_queue_exec_next(GCodeQueue* queue, GCodePyResult* result);
-    void gcode_queue_delete(GCodeQueue* queue);
-
-    GCodeExecutor* gcode_executor_new(void* context);
-    void gcode_executor_delete(GCodeExecutor* executor);
-    const char* gcode_executor_str(GCodeExecutor* executor, const char* text);
-
-
-    /*** Callbacks ***/
-
-    extern "Python+C" void gcode_python_fatal(void* queue, const char* error);
-    extern "Python+C" void gcode_python_m112(void* queue);
-    extern "Python+C" void gcode_python_lookup(void* executor, void* dict,
-                                               const char* key,
-                                               GCodeVal* result);
-    extern "Python+C" char* gcode_python_serialize(void* executor, void* dict);
+    extern "Python+C" bool lex_error(void* context, const char* message);
+    extern "Python+C" bool lex_keyword(void* context, const char* value);
+    extern "Python+C" bool lex_identifier(void* context, const char* value);
+    extern "Python+C" bool lex_str_literal(void* context, const char* value);
+    extern "Python+C" bool lex_int_literal(void* context, int64_t value);
+    extern "Python+C" bool lex_float_literal(void* context, double value);
+    extern "Python+C" bool lex_bridge(void* context);
+    extern "Python+C" bool lex_end_statement(void* context);
 """
 
 defs_all = [
@@ -216,8 +170,7 @@ ffi_source = """
 #include "kinematics.h"
 #include "serialqueue.h"
 #include "pyhelper.h"
-#include "gcode_bridge.h"
-#include "gcode_val.h"
+#include "gcode_lexer.h"
 """
 
 # Return the list of file modification times

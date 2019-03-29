@@ -12,13 +12,6 @@
 typedef struct GCodeError GCodeError;
 typedef uint32_t gcode_line_t;
 
-// Structure for tracking source locations
-typedef struct GCodeLocation {
-    uint32_t first_line;
-    uint32_t first_column;
-    uint32_t last_line;
-    uint32_t last_column;
-} GCodeLocation;
 
 // Allocate a new error.  Errors can be reused.  They are owned by the caller
 // and only valid for a single error callback.
